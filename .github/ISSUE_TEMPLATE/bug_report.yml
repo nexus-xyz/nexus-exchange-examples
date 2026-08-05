@@ -1,0 +1,80 @@
+name: Bug report
+description: An example in this repo doesn't build, doesn't run, or behaves incorrectly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! Please search existing issues first to avoid
+        duplicates. If the problem is in an SDK, the CLI, or the API itself
+        rather than in the example's own code, please file it on that
+        repository instead — see the links on the previous page.
+  - type: input
+    id: example
+    attributes:
+      label: Which example?
+      description: The directory name of the example.
+      placeholder: "ts-trading-dashboard"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the problem, including what you expected instead.
+      placeholder: Following the example's README, `npm run dev` fails at … but I expected …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The commands you ran, starting from a fresh clone.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: The error output. Please redact API keys and any other credentials.
+      render: text
+    validations:
+      required: false
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: The `git rev-parse --short HEAD` of the clone you're running.
+      placeholder: "a1b2c3d"
+    validations:
+      required: true
+  - type: textarea
+    id: toolchain
+    attributes:
+      label: Toolchain versions
+      description: >
+        Versions of whatever the example needs — e.g. `node --version`,
+        `python --version`, `cargo --version`, `nexus-exchange --version`.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows (WSL)
+        - Windows (native)
+        - Other
+    validations:
+      required: false
+  - type: checkboxes
+    id: network
+    attributes:
+      label: Network
+      options:
+        - label: I'm running against testnet, as the example's README describes.
+          required: false

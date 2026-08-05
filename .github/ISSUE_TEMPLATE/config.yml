@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Bug in an SDK, the CLI, or the MCP server
+    url: https://github.com/nexus-xyz/nexus-exchange-ts
+    about: If the bug is in the client rather than in an example here, file it on that client's repo (rs / ts / py / cli / mcp).
+  - name: Exchange API spec
+    url: https://github.com/nexus-xyz/nexus-exchange-api
+    about: Issues with the API itself (not with an example) belong in the spec repo.
+  - name: Security disclosure
+    url: https://github.com/nexus-xyz/nexus-exchange-examples/security/advisories/new
+    about: Report security vulnerabilities privately — please do not open a public issue.

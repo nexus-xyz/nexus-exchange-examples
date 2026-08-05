@@ -1,0 +1,85 @@
+name: Propose an example
+description: Suggest a new example app — one you'd like to build, or one you'd like to see.
+labels: ["example-proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **New examples start here, not as a pull request.** A quick proposal
+        first lets us confirm the app fits the catalog and isn't already being
+        built, so nobody writes a whole app that we then can't merge. Fixes and
+        improvements to an *existing* example don't need this — send those as a
+        PR directly.
+
+        Good examples are small, self-contained, whole apps that a reader can
+        run from the example's own README in under five minutes, against
+        **testnet**, with no credentials beyond their own API key.
+  - type: textarea
+    id: what
+    attributes:
+      label: What does the app do?
+      description: A couple of sentences on the app and what a reader learns from it.
+      placeholder: A terminal order book viewer that streams depth over the WebSocket feed and …
+    validations:
+      required: true
+  - type: dropdown
+    id: track
+    attributes:
+      label: Which track?
+      description: What the example is built on top of.
+      options:
+        - Exchange API directly (REST + WebSocket)
+        - Rust SDK (nexus-exchange-rs)
+        - TypeScript SDK (nexus-exchange-ts)
+        - Python SDK (nexus-exchange-py)
+        - MCP server (nexus-exchange-mcp)
+        - CLI workflow (nexus-exchange-cli)
+        - Market data / history (analytics)
+        - Builder codes (trading frontend)
+        - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: who-builds
+    attributes:
+      label: Who would build it?
+      options:
+        - I'd like to build it and open a PR
+        - I'm requesting it — I'd rather the Nexus team build it
+    validations:
+      required: true
+  - type: textarea
+    id: stack
+    attributes:
+      label: Stack
+      description: Language, framework, and anything a reader would need installed.
+      placeholder: TypeScript, Next.js, no database
+    validations:
+      required: false
+  - type: textarea
+    id: endpoints
+    attributes:
+      label: Endpoints / SDK surface used
+      description: Which API endpoints, SDK calls, or CLI commands the app exercises.
+      placeholder: "GET /markets, WS depth subscription, POST /orders"
+    validations:
+      required: false
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Fits the catalog
+      description: These are the rules every example in this repo follows.
+      options:
+        - label: Self-contained in one directory, runnable from its own README in under five minutes.
+          required: false
+        - label: Runs against testnet, with no credentials beyond a user-supplied API key.
+          required: false
+        - label: Pins the SDK/CLI version it targets.
+          required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else?
+      description: Prior art, related issues, or open questions.
+    validations:
+      required: false

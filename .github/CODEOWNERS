@@ -1,0 +1,6 @@
+# Default reviewers — the Interfaces pod. Any member of @nexus-xyz/eng can
+# review and unblock, so no single person is a bottleneck; @Luc-Campos (SDK
+# lead) and @collinjackson are listed explicitly so both are auto-requested on
+# every PR. Matches the sibling nexus-exchange-* client repos.
+# Docs: https://docs.github.com/articles/about-code-owners
+* @nexus-xyz/eng @Luc-Campos @collinjackson

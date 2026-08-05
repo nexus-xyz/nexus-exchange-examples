@@ -1,0 +1,45 @@
+# This repo is polyglot — every example brings its own toolchain, so this
+# ignore list covers all of them centrally. An example needing something
+# unusual can add its own .gitignore in its directory.
+
+# Credentials. Examples read a user-supplied API key from the environment;
+# nothing secret is ever committed here.
+.env
+.env.*
+!.env.example
+
+# Node / TypeScript
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.next/
+.turbo/
+
+# Rust
+target/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Logs and local scratch
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local agent/tool settings (per-developer, not repo config)
+.claude/settings.local.json

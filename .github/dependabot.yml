@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # GitHub Actions used by our workflows. This is the only ecosystem that
+  # applies repo-wide — every example owns its own dependency manifest.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions-minor:
+        update-types:
+          - minor
+          - patch
+
+  # Per-example manifests are registered here as examples land. Examples pin
+  # their SDK/CLI version deliberately (a reader should get the same behaviour
+  # the README describes), so Dependabot is scoped to each example's directory
+  # and its bumps are reviewed like any other change to that example.
+  #
+  # Add one block per example, e.g.:
+  #
+  # - package-ecosystem: npm
+  #   directory: "/ts-trading-dashboard"
+  #   schedule:
+  #     interval: weekly
+  #   commit-message:
+  #     prefix: "deps(ts-trading-dashboard)"
+  #   groups:
+  #     npm-minor:
+  #       update-types: [minor, patch]
