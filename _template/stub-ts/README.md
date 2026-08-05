@@ -25,8 +25,9 @@ this file for your app after copying.
 
 ## Pinned versions
 
-This example pins **`@nexus-xyz/exchange-ts` `0.1.0`** exactly (no `^`), plus
-`tsx` `4.23.8` and `typescript` `7.0.2` for running and typechecking.
+This example pins **`@nexus-xyz/exchange-ts` `0.2.0`** exactly (no `^`), plus
+`tsx` `4.23.8` and `typescript` `7.0.2` for running and typechecking. It targets
+**testnet** — play funds, credited by the faucet, with no real-world value.
 
 ## Setup
 
@@ -45,21 +46,20 @@ npm start
 
 | Variable | Required | What it's for |
 | --- | --- | --- |
-| `NEXUS_EXCHANGE_API_URL` | see below | API base URL, e.g. `https://<host>/api/v1`. Overrides the SDK's default host. |
+| `NEXUS_EXCHANGE_API_URL` | no | API base URL, e.g. `https://<host>/api/v1`. Overrides the testnet default host — see below. |
 | `NEXUS_EXCHANGE_API_KEY` | no | API key. Without it, only public market data is fetched. |
 | `NEXUS_EXCHANGE_API_SECRET` | no | API secret (32-byte hex) paired with the key. |
 
 ### About the host
 
-The pinned SDK 0.1.0 knows three networks — `Stable`, `Beta`, `Local` — and
-defaults to `Stable` (`https://exchange.nexus.xyz/api/v1`). At the time of
-writing that host does not serve `/api/v1`, so **set `NEXUS_EXCHANGE_API_URL` to
-the API base you've been given**; without a reachable host the stub prints that
-instruction and exits 1 rather than dumping a stack trace.
+The stub asks for `Network.Testnet` explicitly, which resolves to
+`https://exchange.nexus.xyz/api/v1`. That host **did not serve `/api/v1` from the
+machine this stub was written on** — every market-data route returned the web
+app's 404 page — so if you get a 404 you are probably not doing anything wrong.
 
-Note also that 0.1.0 has no `Network.Testnet` member — the testnet/mainnet
-network axis landed in the SDK after this release. When your example needs to
-name a network, pin an SDK version that has it and say so here.
+Set `NEXUS_EXCHANGE_API_URL` to a base URL that works for you and it takes
+precedence over the network default. With no reachable host the stub prints that
+instruction and exits 1 rather than dumping a stack trace.
 
 ## How it works
 

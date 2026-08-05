@@ -6,7 +6,12 @@
 //
 // Run with:  npm install && npm start
 
-import { Client, ApiError, TransportError } from "@nexus-xyz/exchange-ts";
+import {
+  Client,
+  Network,
+  ApiError,
+  TransportError,
+} from "@nexus-xyz/exchange-ts";
 
 // Credentials are optional here on purpose: the public market-data section runs
 // without them, so a reader gets output before doing any setup. Read them from
@@ -14,16 +19,17 @@ import { Client, ApiError, TransportError } from "@nexus-xyz/exchange-ts";
 const apiKey = process.env.NEXUS_EXCHANGE_API_KEY;
 const apiSecret = process.env.NEXUS_EXCHANGE_API_SECRET;
 
-// Which deployment to talk to.
+// Testnet: play funds, faucet-credited USDX, no real-world value. It's the SDK
+// default, but naming it makes the example's posture explicit rather than
+// implied — an example should never leave a reader guessing whose money it
+// moves. `Network.Mainnet` deliberately throws in this SDK version.
 //
-// The pinned SDK (0.1.0) exposes `Network.Stable | Beta | Local` and defaults to
-// Stable — it has no `Testnet` member, so an example on this version can't select
-// a testnet by name. Its Stable host doesn't currently serve `/api/v1` either, so
-// this stub takes the host explicitly and leaves the SDK default as a fallback.
-// Set NEXUS_EXCHANGE_API_URL to the API base you've been given.
+// NEXUS_EXCHANGE_API_URL overrides the host when you need a specific deployment
+// (a local stack, or a testnet host other than the SDK's default).
 const baseUrl = process.env.NEXUS_EXCHANGE_API_URL;
 
 const client = new Client({
+  network: Network.Testnet,
   apiKey,
   apiSecret,
   ...(baseUrl ? { baseUrl } : {}),
@@ -33,7 +39,7 @@ try {
   // --- Public market data (no credentials needed) ----------------------------
 
   const summaries = await client.fetchMarketSummaries();
-  console.log(`${summaries.length} markets`);
+  console.log(`${summaries.length} markets on testnet`);
 
   const first = summaries[0];
   if (!first) {
@@ -58,7 +64,7 @@ try {
   if (!apiKey || !apiSecret) {
     console.log(
       "\nNo credentials set — skipping the authenticated call." +
-        "\nCopy .env.example to .env and add an API key to see it.",
+        "\nCopy .env.example to .env and add a testnet key to see it.",
     );
     process.exit(0);
   }
@@ -69,17 +75,16 @@ try {
       `positions=${account.positions.length}`,
   );
 } catch (error) {
-  // A wrong or unreachable host is the overwhelmingly common first-run failure,
-  // and a raw stack trace doesn't tell a reader what to do about it. Say it
-  // plainly instead.
+  // An unreachable host is the overwhelmingly common first-run failure, and a
+  // raw stack trace doesn't tell a reader what to do about it. Say it plainly.
   if (error instanceof ApiError || error instanceof TransportError) {
     // Error bodies can be a whole HTML error page; one line is all a reader needs.
     const detail = error.message.replace(/\s+/g, " ").slice(0, 120);
     console.error(
-      `\nCouldn't reach the Exchange API at ${baseUrl ?? "the SDK's default host"}.` +
+      `\nCouldn't reach the Exchange API at ${baseUrl ?? "the testnet default host"}.` +
         `\n  ${detail}…` +
-        "\n\nSet NEXUS_EXCHANGE_API_URL to the API base URL you've been given" +
-        "\n(for example: NEXUS_EXCHANGE_API_URL=https://<host>/api/v1 npm start).",
+        "\n\nIf the default host isn't serving the API for you, point the example" +
+        "\nsomewhere else with NEXUS_EXCHANGE_API_URL=https://<host>/api/v1 npm start.",
     );
     process.exit(1);
   }

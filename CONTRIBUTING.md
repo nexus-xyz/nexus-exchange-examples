@@ -51,22 +51,22 @@ the toolchain but has never seen this repo.
 
 ### 3. A pinned SDK/CLI version
 
-Pin exact versions, not ranges — `"@nexus-xyz/exchange-ts": "0.1.0"`, not
-`"^0.1.0"`. A reader running the example a year from now should get the behaviour
+Pin exact versions, not ranges — `"@nexus-xyz/exchange-ts": "0.2.0"`, not
+`"^0.2.0"`. A reader running the example a year from now should get the behaviour
 the README describes, not a silently-upgraded SDK and a broken app. Dependabot
 proposes bumps per example, and they're reviewed like any other change.
 
 ### 4. Testnet, and no credentials beyond a user-supplied API key
 
 - Examples target **testnet** (play funds) and must never be pointed at real
-  funds. Say in your README which deployment yours talks to.
-  > **Caveat worth knowing:** the currently published TypeScript SDK (`0.1.0`)
-  > has no `Network.Testnet` — its networks are `Stable`, `Beta`, and `Local`,
-  > and it defaults to `Stable`, whose host does not presently serve `/api/v1`.
-  > The testnet/mainnet axis landed in the SDK *after* that release. Until a
-  > release with it is published, examples should take the API base URL from
-  > `NEXUS_EXCHANGE_API_URL` (as [`_template/stub-ts`](./_template/stub-ts) does)
-  > rather than relying on an SDK default.
+  funds. Name the network explicitly rather than relying on the default — e.g.
+  `network: Network.Testnet` — so a reader never has to guess whose money an
+  example moves, and say in your README which deployment it talks to.
+  > **Worth knowing:** accept an API base URL override from
+  > `NEXUS_EXCHANGE_API_URL`, as [`_template/stub-ts`](./_template/stub-ts) does.
+  > The testnet default host does not serve `/api/v1` from every network, so
+  > without an escape hatch a reader behind the wrong DNS gets a bare 404 and no
+  > way forward.
 - Read credentials from the **environment**, never from a committed file. Ship a
   `.env.example` documenting the variables; `.env` itself is gitignored.
 - Never commit a key, secret, token, or seed phrase. Not even an expired or
