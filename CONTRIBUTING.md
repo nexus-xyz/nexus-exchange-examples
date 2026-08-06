@@ -55,12 +55,13 @@ Pin exact versions, not ranges — `"@nexus-xyz/exchange-ts": "0.2.0"`, not
 `"^0.2.0"`. A reader running the example a year from now should get the behaviour
 the README describes, not a silently-upgraded SDK and a broken app.
 
-**Commit your lockfile** too — `package-lock.json`, `Cargo.lock`, or whatever
-your Python tool produces (`uv.lock`, `requirements.txt` with hashes). A
-pin on your direct dependency isn't reproducible on its own: without a lockfile
-the transitive tree still floats. It's also what gives Dependabot something to
-bump per example, and those bumps are reviewed like any other change. CI installs
-from the lockfile (`npm ci`), so a missing one fails the build.
+**Commit your lockfile** too — `package-lock.json`, `Cargo.lock`, or a
+`requirements.txt` with every dependency pinned by `==`. A pin on your direct
+dependency isn't reproducible on its own: without a lockfile the transitive tree
+still floats. It's also what gives Dependabot something to bump per example, and
+those bumps are reviewed like any other change. CI installs from the lockfile
+(`npm ci`, `cargo build --locked`, `pip install -r requirements.txt`), so a
+missing one fails the build.
 
 When you review a Dependabot bump, update the version your README states in prose
 in the same PR — a bumped manifest with a stale README is the pin quietly telling
@@ -89,9 +90,23 @@ the reader something untrue.
 ### 5. It builds in CI
 
 CI builds or typechecks **every** example on every PR, so the catalog can't rot
-silently. If your example doesn't build, it doesn't merge — CI says so on every
-PR, and a reviewer will hold you to it. Your example needs a command CI can check
-it with: for a Node example, a `typecheck` or `build` script in `package.json`.
+silently. If your example doesn't build, it doesn't merge — `CI` is a required
+status check on `main`.
+
+Your example has to give CI something to check it with, which is a per-language
+requirement:
+
+| Language | Must ship | CI runs |
+| --- | --- | --- |
+| Node / TypeScript | `package-lock.json`, and a `typecheck` or `build` script | `npm ci`, then those scripts |
+| Rust | `Cargo.lock` | `cargo build --locked --all-targets` |
+| Python | `requirements.txt`, everything pinned by `==`, including `mypy` | `pip install -r requirements.txt`, `compileall`, `mypy .` |
+| Shell (CLI workflows) | at least one `*.sh`, and a README | `bash -n` and `shellcheck` on every script |
+
+Your example's **language comes from its manifest, not its track.** An MCP
+example is a Node or Python project and is checked as one — `sdk-mcp/` says what
+the app is built on, not what toolchain builds it.
+
 See [How CI gates your PR](#how-ci-gates-your-pr).
 
 ## Where your example goes
@@ -148,8 +163,8 @@ the directory convention above — every directory one level inside a track, plu
 [`_template/stub-ts`](./_template/stub-ts), which is checked like an example
 because it's what every TS example is copied from — and builds or typechecks each
 one according to its language. Adding an example needs no workflow edit. Your PR
-is expected to be green before it merges, and a reviewer will check — see
-[Review](#review) for what is enforced mechanically and what isn't.
+merges only when every example still builds, including yours: `CI` is a required
+status check on `main`.
 
 You can run the discovery step exactly as CI does:
 
@@ -159,14 +174,23 @@ python3 .github/scripts/discover-examples.py
 
 **Discovery fails rather than skipping anything it doesn't recognise.** A
 directory CI silently ignores is worse than no CI at all, because its existence
-gets read as coverage. It fails on a directory with no recognised manifest, a name
-that isn't `kebab-case`, a missing lockfile, a Node example with no `typecheck` or
-`build` script, or an example placed anywhere but one level inside a track.
+gets read as coverage. It fails on a directory that says nothing about how to
+check it, a name that isn't `kebab-case`, manifests for two languages in one
+directory, and an example placed anywhere but one level inside a track.
 
-**Adding the first example in a new language?** Rust and Python are recognised but
-have no CI recipe yet, so discovery fails on them by design — your PR adds the job
-to `ci.yml` alongside the example. That's deliberately a little inconvenient: it's
-how the gate stays real instead of quietly not covering your language.
+It fails just as hard on a gate that would pass while checking nothing: a missing
+lockfile, a Node example with no `typecheck` or `build` script, a Python example
+that doesn't pin `mypy`. Each of those would go green having verified nothing —
+the failure mode this whole workflow exists to prevent, so it isn't allowed to
+happen to the workflow itself.
+
+Each language job caches its toolchain (npm, cargo, pip), so a PR that touches one
+example doesn't pay for the rest of the catalog.
+
+**Adding an example in a language nothing here uses yet?** Discovery fails on it,
+and your PR adds the recipe to `ci.yml` alongside the example. Deliberately a
+little inconvenient: it's how the gate stays real instead of quietly not covering
+your language.
 
 CI runs offline: it builds and typechecks, and does not place orders or require
 credentials. No secrets are available to it, and it uses a read-only token. If
@@ -182,13 +206,15 @@ PR that you ran it end-to-end from a clean clone.
   team on every PR. One approval from a code owner is required, and pushing to
   your branch dismisses stale approvals, so a review after a force-push or a new
   commit is a fresh review.
-- Don't merge on red. `CI` is a single job that passes only when every discovered
-  example passed, which makes it the one status check to require in branch
-  protection.
-  > **Not yet enforced:** `main`'s protection rules list no required status
-  > checks, so today a red CI blocks nothing mechanically — reviewers do. An
-  > admin adding `CI` to the required checks is what turns "doesn't build,
-  > doesn't merge" from a convention into a rule.
+- **`CI` is a required status check on `main`**, so a red build blocks the merge
+  button rather than relying on someone noticing. It's a single job that passes
+  only when every discovered example passed, which is why it — and not the
+  per-language jobs — is the required one: the language jobs are a dynamic matrix
+  and skip entirely when a language has no examples, so none of them is a name
+  branch protection could depend on.
+  > **If you rename it, re-point the protection rule.** A required check that no
+  > longer runs blocks every PR forever, and the fix is a repo setting, not a
+  > commit.
 - `main` requires linear history; PRs are squash-merged.
 - Reviewers read your example's README **as a reader would** and try to run it
   from a clean clone. If the five-minute path doesn't work, that's the review
