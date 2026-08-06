@@ -89,9 +89,10 @@ the reader something untrue.
 ### 5. It builds in CI
 
 CI builds or typechecks **every** example on every PR, so the catalog can't rot
-silently. If your example doesn't build, the PR doesn't merge. Your example needs
-a command CI can check it with — for a Node example, a `typecheck` or `build`
-script in `package.json`. See [How CI gates your PR](#how-ci-gates-your-pr).
+silently. If your example doesn't build, it doesn't merge — CI says so on every
+PR, and a reviewer will hold you to it. Your example needs a command CI can check
+it with: for a Node example, a `typecheck` or `build` script in `package.json`.
+See [How CI gates your PR](#how-ci-gates-your-pr).
 
 ## Where your example goes
 
@@ -146,8 +147,9 @@ you'll see live testnet markets before you've written a line. See
 the directory convention above — every directory one level inside a track, plus
 [`_template/stub-ts`](./_template/stub-ts), which is checked like an example
 because it's what every TS example is copied from — and builds or typechecks each
-one according to its language. Adding an example needs no workflow edit. A PR
-merges only when every example still builds, including yours.
+one according to its language. Adding an example needs no workflow edit. Your PR
+is expected to be green before it merges, and a reviewer will check — see
+[Review](#review) for what is enforced mechanically and what isn't.
 
 You can run the discovery step exactly as CI does:
 
@@ -177,9 +179,16 @@ PR that you ran it end-to-end from a clean clone.
 ## Review
 
 - [`.github/CODEOWNERS`](./.github/CODEOWNERS) auto-requests the Nexus Interfaces
-  team on every PR. One approval from a code owner is required, plus green CI —
-  the required status check is the single `CI` job, which passes only when every
-  discovered example passed.
+  team on every PR. One approval from a code owner is required, and pushing to
+  your branch dismisses stale approvals, so a review after a force-push or a new
+  commit is a fresh review.
+- Don't merge on red. `CI` is a single job that passes only when every discovered
+  example passed, which makes it the one status check to require in branch
+  protection.
+  > **Not yet enforced:** `main`'s protection rules list no required status
+  > checks, so today a red CI blocks nothing mechanically — reviewers do. An
+  > admin adding `CI` to the required checks is what turns "doesn't build,
+  > doesn't merge" from a convention into a rule.
 - `main` requires linear history; PRs are squash-merged.
 - Reviewers read your example's README **as a reader would** and try to run it
   from a clean clone. If the five-minute path doesn't work, that's the review
