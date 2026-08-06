@@ -1,5 +1,5 @@
 def markets(count: int) -> str:
-    return f"{count} markets"
+    return count  # deliberate: mypy return-value error
 
 
 if __name__ == "__main__":
