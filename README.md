@@ -1,36 +1,104 @@
 # Nexus Exchange Examples
 
-Small, complete, runnable apps built on the [Nexus Exchange](https://github.com/nexus-xyz/nexus-exchange-api)
-API, SDKs, and CLI. Each directory is one self-contained example: clone it,
-point it at testnet with your own API key, and have it running in a few minutes.
+Small, complete, runnable apps built on the [Nexus Exchange](https://exchange.nexus.xyz)
+API, SDKs, and CLI — in the spirit of [vercel/examples](https://github.com/vercel/examples).
+Every directory is one self-contained app: clone it, point it at testnet with
+your own API key, and have it running in a few minutes.
 
-> [!NOTE]
-> **This repo is being bootstrapped.** The directory convention, the
-> `_template/` scaffold, CI, and `CONTRIBUTING.md` land in the next steps of
-> setup, followed by the first examples. Until then there's nothing to run here
-> yet — this README covers what the repo is for and how contributions work.
+## Running any example
 
-## Scope
+Every example follows the same shape, so the steps are always these:
 
-**Whole apps live here.** Something a reader can run and use — a trading
-frontend, an analytics tool, a CLI workflow.
+1. **Pick one** from the [index](#examples) below and `cd` into its directory.
+2. **Read its README.** It lists the prerequisites, the one command to run, and
+   the exact SDK/CLI version it pins.
+3. **Copy `.env.example` to `.env`** and add your own testnet API key, if the
+   example needs credentials — many only read public market data and need none.
+4. **Run the single command** its README gives you.
+
+Every example targets **testnet** (play funds), needs no credentials beyond your
+own API key, and is built or typechecked in CI on every PR — so what you clone
+is what the README describes.
+
+Get testnet API credentials from the [Nexus Exchange](https://exchange.nexus.xyz)
+app; each example's README says whether it needs them.
+
+## Scope: whole apps here, API demos with their client
+
+This repo owns **whole apps** — something you can run and use, like a trading
+frontend, an analytics tool, or a CLI workflow.
 
 **Minimal API-surface demos stay with their client**, in the `examples/`
 directory of the SDK or tool they demonstrate:
-[rs](https://github.com/nexus-xyz/nexus-exchange-rs) ·
-[ts](https://github.com/nexus-xyz/nexus-exchange-ts) ·
-[py](https://github.com/nexus-xyz/nexus-exchange-py) ·
-[cli](https://github.com/nexus-xyz/nexus-exchange-cli) ·
-[mcp](https://github.com/nexus-xyz/nexus-exchange-mcp).
-Those answer "how do I call this endpoint?"; this repo answers "what does a
-real app on the Exchange look like?"
+[rs](https://github.com/nexus-xyz/nexus-exchange-rs/tree/main/examples) ·
+[ts](https://github.com/nexus-xyz/nexus-exchange-ts/tree/main/examples) ·
+[py](https://github.com/nexus-xyz/nexus-exchange-py/tree/main/examples) ·
+[cli](https://github.com/nexus-xyz/nexus-exchange-cli/tree/main/examples) ·
+[mcp](https://github.com/nexus-xyz/nexus-exchange-mcp/tree/main/examples).
 
-## What every example here does
+The dividing line: those answer *"how do I call this endpoint?"* — one file, one
+call, no app around it. This repo answers *"what does a real app on the Exchange
+look like?"* If your example is a single script demonstrating one method, it
+belongs with its client, not here.
 
-- **One directory, self-contained**, runnable from its own README in under five minutes.
-- **Pins the SDK/CLI version** it targets, so a reader gets the behaviour the README describes.
-- **Runs against testnet**, with no credentials beyond a user-supplied API key. Nothing secret is ever committed.
-- **Is built and typechecked in CI on every PR**, so the catalog can't rot silently.
+## Examples
+
+Examples are grouped by **track** — what the app is built on.
+
+### Track 1 — [`exchange-api/`](./exchange-api) · the Exchange API directly (REST + WebSocket)
+
+Apps that talk to the API without an SDK, for readers working in a language we
+don't ship a client for.
+
+_None yet._
+
+### Track 2 — one whole app per SDK
+
+| SDK | Directory | Examples |
+| --- | --- | --- |
+| Rust | [`sdk-rust/`](./sdk-rust) | _None yet._ |
+| TypeScript | [`sdk-ts/`](./sdk-ts) | _None yet._ |
+| Python | [`sdk-python/`](./sdk-python) | _None yet._ |
+| MCP | [`sdk-mcp/`](./sdk-mcp) | _None yet._ |
+
+### Track 3 — [`cli/`](./cli) · CLI-driven workflows
+
+Apps built by scripting [`nexus-exchange-cli`](https://github.com/nexus-xyz/nexus-exchange-cli).
+
+_None yet._
+
+### Track 4 — [`analytics/`](./analytics) · market-data and history tools
+
+Tools built on the market-data and history endpoints — reporting, backtesting,
+and analysis rather than order placement.
+
+_None yet._
+
+### Track 5 — builder codes
+
+A trading frontend using builder codes. Not started; the underlying feature
+isn't ready yet.
+
+## Repository layout
+
+```
+/
+├── README.md              you are here — the catalog index
+├── CONTRIBUTING.md        standards every example must meet
+├── _template/             copy-to-start scaffold (with a runnable TS stub)
+├── exchange-api/          track 1
+├── sdk-rust/              track 2
+├── sdk-ts/
+├── sdk-python/
+├── sdk-mcp/
+├── cli/                   track 3
+├── analytics/             track 4
+└── .github/workflows/     CI — builds/typechecks every example
+```
+
+One example per directory, exactly one level inside its track:
+`<track>/<example-name>/`. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full
+convention.
 
 ## Contributing
 
@@ -39,17 +107,15 @@ Contributions are welcome, with one wrinkle worth knowing before you start:
 - **Fixing or improving an existing example** — open a pull request directly.
 - **Adding a new example** — open a
   [**Propose an example**](https://github.com/nexus-xyz/nexus-exchange-examples/issues/new?template=example_proposal.yml)
-  issue first, before you build it. It's a short form. We'll confirm the app
-  fits the catalog and isn't already in flight, then you can send the PR. This
-  exists so nobody writes a whole app that we then can't merge — not to
-  discourage the PR.
+  issue first, before you build it. It's a short form. We'll confirm the app fits
+  the catalog and isn't already in flight, then you send the PR. This exists so
+  nobody writes a whole app that we then can't merge — not to discourage the PR.
 
 You can also use that same form to **request** an example you'd like to see
 without building it yourself.
 
-Every PR is reviewed by the Nexus Interfaces team, and CI must pass. The full
-contribution guide — directory naming, the `_template/` scaffold, what CI
-checks — arrives with the skeleton.
+Start from [`_template/`](./_template), and read
+[CONTRIBUTING.md](./CONTRIBUTING.md) for the standards and the review process.
 
 ## License
 

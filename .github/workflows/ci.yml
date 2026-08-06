@@ -1,0 +1,89 @@
+name: CI
+
+# Every example is built or typechecked on every PR. The catalog's whole value
+# is that the examples work, so this gate is the thing that keeps it honest —
+# see CONTRIBUTING.md § How CI gates your PR.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Read-only, and no secrets are used anywhere below. Examples are built by
+# running their own manifests, including on PRs from forks, so CI must have
+# nothing worth stealing. Note `pull_request`, not `pull_request_target`.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    name: Discover examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      node: ${{ steps.discover.outputs.node }}
+      any-node: ${{ steps.discover.outputs.any-node }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Discover examples from the directory convention
+        id: discover
+        run: python3 .github/scripts/discover-examples.py
+
+  node:
+    name: node · ${{ matrix.dir }}
+    needs: discover
+    if: needs.discover.outputs.any-node == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.discover.outputs.node) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+      - name: Install (exact pinned versions from the lockfile)
+        working-directory: ${{ matrix.dir }}
+        run: npm ci
+      # Discovery guarantees at least one of these exists, so `--if-present`
+      # can't quietly turn into a no-op gate.
+      - name: Typecheck
+        working-directory: ${{ matrix.dir }}
+        run: npm run typecheck --if-present
+      - name: Build
+        working-directory: ${{ matrix.dir }}
+        run: npm run build --if-present
+
+  # Single required status check. The per-language jobs are a dynamic matrix and
+  # are skipped when a language has no examples, so branch protection needs one
+  # stable name to require.
+  ci:
+    name: CI
+    needs: [discover, node]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check that every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::a required job did not pass ($result)"; exit 1 ;;
+            esac
+          done

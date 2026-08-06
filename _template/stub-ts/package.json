@@ -1,0 +1,19 @@
+{
+  "name": "stub-ts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Copy-to-start TypeScript stub for a Nexus Exchange example.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nexus-xyz/exchange-ts": "0.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "tsx": "4.23.8",
+    "typescript": "7.0.2"
+  }
+}
