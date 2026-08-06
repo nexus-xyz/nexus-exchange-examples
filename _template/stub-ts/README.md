@@ -18,7 +18,8 @@ this file for your app after copying.
 
 ## Prerequisites
 
-- Node 20 or later
+- Node 22 or later. It reads `.env` with Node's built-in `process.loadEnvFile`,
+  which older Node 20 releases don't have, and 22 is the version CI builds on.
 - Optionally, Nexus Exchange API credentials — create them in the
   [Exchange app](https://exchange.nexus.xyz). The public market-data output works
   without any.

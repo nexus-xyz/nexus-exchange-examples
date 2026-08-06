@@ -6,12 +6,23 @@
 //
 // Run with:  npm install && npm start
 
+import { existsSync } from "node:fs";
+
 import {
   Client,
   Network,
   ApiError,
   TransportError,
 } from "@nexus-xyz/exchange-ts";
+
+// Load .env if there is one. Node's `--env-file-if-exists` flag would do this,
+// but tsx re-execs and the notice gets printed twice, so a reader's first run
+// looks broken. Resolved relative to this file rather than the working
+// directory, so the example behaves the same however it's invoked.
+const envFile = new URL("../.env", import.meta.url);
+if (existsSync(envFile)) {
+  process.loadEnvFile(envFile);
+}
 
 // Credentials are optional here on purpose: the public market-data section runs
 // without them, so a reader gets output before doing any setup. Read them from
@@ -79,10 +90,12 @@ try {
   // raw stack trace doesn't tell a reader what to do about it. Say it plainly.
   if (error instanceof ApiError || error instanceof TransportError) {
     // Error bodies can be a whole HTML error page; one line is all a reader needs.
-    const detail = error.message.replace(/\s+/g, " ").slice(0, 120);
+    const message = error.message.replace(/\s+/g, " ").trim();
+    const detail =
+      message.length > 120 ? `${message.slice(0, 120)}…` : message;
     console.error(
       `\nCouldn't reach the Exchange API at ${baseUrl ?? "the testnet default host"}.` +
-        `\n  ${detail}…` +
+        `\n  ${detail}` +
         "\n\nIf the default host isn't serving the API for you, point the example" +
         "\nsomewhere else with NEXUS_EXCHANGE_API_URL=https://<host>/api/v1 npm start.",
     );

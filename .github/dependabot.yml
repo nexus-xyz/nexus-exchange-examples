@@ -15,19 +15,33 @@ updates:
           - minor
           - patch
 
+  # The copy-to-start TS stub. It's the manifest every TypeScript example is
+  # copied from, so a stale pin here propagates into every example someone
+  # starts after it goes stale.
+  - package-ecosystem: npm
+    directory: "/_template/stub-ts"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(stub-ts)"
+    groups:
+      npm-minor:
+        update-types: [minor, patch]
+
   # Per-example manifests are registered here as examples land. Examples pin
   # their SDK/CLI version deliberately (a reader should get the same behaviour
   # the README describes), so Dependabot is scoped to each example's directory
   # and its bumps are reviewed like any other change to that example.
   #
-  # Add one block per example, e.g.:
+  # Add one block per example, using the example's real path —
+  # `<track>/<example-name>/`, per CONTRIBUTING.md:
   #
   # - package-ecosystem: npm
-  #   directory: "/ts-trading-dashboard"
+  #   directory: "/sdk-ts/trading-dashboard"
   #   schedule:
   #     interval: weekly
   #   commit-message:
-  #     prefix: "deps(ts-trading-dashboard)"
+  #     prefix: "deps(trading-dashboard)"
   #   groups:
   #     npm-minor:
   #       update-types: [minor, patch]

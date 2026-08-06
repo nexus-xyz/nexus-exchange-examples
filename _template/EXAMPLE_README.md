@@ -26,9 +26,10 @@ Weak:  "Demonstrates the fetchOrderBook and subscribe methods."
 
 ## Prerequisites
 
-<!-- Toolchain and minimum versions. Be specific: "Node 20+", not "Node". -->
+<!-- Toolchain and minimum versions. Be specific: "Node 22+", not "Node". State
+     the version you actually tested on, not the oldest one you assume works. -->
 
-- Node 20 or later
+- Node 22 or later
 - A Nexus Exchange **testnet** API key — <!-- delete this line if not needed -->
   create one in the [Exchange app](https://exchange.nexus.xyz)
 
