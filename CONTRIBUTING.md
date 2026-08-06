@@ -36,7 +36,7 @@ be able to download one directory and have it work.
 Every example has a `README.md` covering, at minimum:
 
 - **What it does** and what a reader learns from it.
-- **Prerequisites** — the toolchain and versions needed (e.g. Node 20+, Rust 1.80+).
+- **Prerequisites** — the toolchain and versions needed (e.g. Node 22+, Rust 1.80+).
 - **One command to run it.** Not a sequence of six. Setup may be a couple of
   steps (`npm install`, copy `.env`), but running it is a single command.
 - **The pinned SDK/CLI version** it targets, stated in prose so it's visible
@@ -53,8 +53,18 @@ the toolchain but has never seen this repo.
 
 Pin exact versions, not ranges — `"@nexus-xyz/exchange-ts": "0.2.0"`, not
 `"^0.2.0"`. A reader running the example a year from now should get the behaviour
-the README describes, not a silently-upgraded SDK and a broken app. Dependabot
-proposes bumps per example, and they're reviewed like any other change.
+the README describes, not a silently-upgraded SDK and a broken app.
+
+**Commit your lockfile** too — `package-lock.json`, `Cargo.lock`, or whatever
+your Python tool produces (`uv.lock`, `requirements.txt` with hashes). A
+pin on your direct dependency isn't reproducible on its own: without a lockfile
+the transitive tree still floats. It's also what gives Dependabot something to
+bump per example, and those bumps are reviewed like any other change. CI installs
+from the lockfile (`npm ci`), so a missing one fails the build.
+
+When you review a Dependabot bump, update the version your README states in prose
+in the same PR — a bumped manifest with a stale README is the pin quietly telling
+the reader something untrue.
 
 ### 4. Testnet, and no credentials beyond a user-supplied API key
 
@@ -79,8 +89,9 @@ proposes bumps per example, and they're reviewed like any other change.
 ### 5. It builds in CI
 
 CI builds or typechecks **every** example on every PR, so the catalog can't rot
-silently. If your example doesn't build, the PR doesn't merge. See
-[How CI gates your PR](#how-ci-gates-your-pr).
+silently. If your example doesn't build, the PR doesn't merge. Your example needs
+a command CI can check it with — for a Node example, a `typecheck` or `build`
+script in `package.json`. See [How CI gates your PR](#how-ci-gates-your-pr).
 
 ## Where your example goes
 
@@ -131,23 +142,44 @@ you'll see live testnet markets before you've written a line. See
 
 ## How CI gates your PR
 
-CI discovers examples from the directory convention above — every directory one
-level inside a track — and builds or typechecks each one according to its
-language, so adding an example needs no workflow edit. A PR merges only when
-every example still builds, including yours.
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) discovers examples from
+the directory convention above — every directory one level inside a track, plus
+[`_template/stub-ts`](./_template/stub-ts), which is checked like an example
+because it's what every TS example is copied from — and builds or typechecks each
+one according to its language. Adding an example needs no workflow edit. A PR
+merges only when every example still builds, including yours.
+
+You can run the discovery step exactly as CI does:
+
+```bash
+python3 .github/scripts/discover-examples.py
+```
+
+**Discovery fails rather than skipping anything it doesn't recognise.** A
+directory CI silently ignores is worse than no CI at all, because its existence
+gets read as coverage. It fails on a directory with no recognised manifest, a name
+that isn't `kebab-case`, a missing lockfile, a Node example with no `typecheck` or
+`build` script, or an example placed anywhere but one level inside a track.
+
+**Adding the first example in a new language?** Rust and Python are recognised but
+have no CI recipe yet, so discovery fails on them by design — your PR adds the job
+to `ci.yml` alongside the example. That's deliberately a little inconvenient: it's
+how the gate stays real instead of quietly not covering your language.
 
 CI runs offline: it builds and typechecks, and does not place orders or require
-credentials. If your example includes a live smoke check against testnet, it must
-degrade gracefully when no credentials are present — skip, don't fail.
+credentials. No secrets are available to it, and it uses a read-only token. If
+your example includes a live smoke check against testnet, it must degrade
+gracefully when no credentials are present — skip, don't fail.
 
-> **Note:** CI is being stood up now (tracked internally as ENG-9226). Until it
-> lands, reviewers verify builds by hand — so please state in your PR that you
-> ran the example end-to-end from a clean clone.
+CI does not run your example, so building green isn't proof it works. Say in your
+PR that you ran it end-to-end from a clean clone.
 
 ## Review
 
 - [`.github/CODEOWNERS`](./.github/CODEOWNERS) auto-requests the Nexus Interfaces
-  team on every PR. One approval from a code owner is required, plus green CI.
+  team on every PR. One approval from a code owner is required, plus green CI —
+  the required status check is the single `CI` job, which passes only when every
+  discovered example passed.
 - `main` requires linear history; PRs are squash-merged.
 - Reviewers read your example's README **as a reader would** and try to run it
   from a clean clone. If the five-minute path doesn't work, that's the review
