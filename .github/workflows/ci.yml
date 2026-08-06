@@ -28,7 +28,7 @@ jobs:
       node: ${{ steps.discover.outputs.node }}
       any-node: ${{ steps.discover.outputs.any-node }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Discover examples from the directory convention
@@ -46,7 +46,7 @@ jobs:
       matrix:
         dir: ${{ fromJSON(needs.discover.outputs.node) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@v5
