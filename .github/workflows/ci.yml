@@ -3,6 +3,10 @@ name: CI
 # Every example is built or typechecked on every PR. The catalog's whole value
 # is that the examples work, so this gate is the thing that keeps it honest —
 # see CONTRIBUTING.md § How CI gates your PR.
+#
+# There is no hardcoded list of examples: `discover` reads the directory
+# convention and each language job runs over what it found, so a new example is
+# covered the moment it lands.
 
 on:
   pull_request:
@@ -15,9 +19,12 @@ on:
 permissions:
   contents: read
 
+# Supersede in-flight runs for the same ref, but never cancel a run on the
+# default branch — that history is what tells us when the catalog started
+# rotting.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   discover:
@@ -27,8 +34,14 @@ jobs:
     outputs:
       node: ${{ steps.discover.outputs.node }}
       any-node: ${{ steps.discover.outputs.any-node }}
+      rust: ${{ steps.discover.outputs.rust }}
+      any-rust: ${{ steps.discover.outputs.any-rust }}
+      python: ${{ steps.discover.outputs.python }}
+      any-python: ${{ steps.discover.outputs.any-python }}
+      shell: ${{ steps.discover.outputs.shell }}
+      any-shell: ${{ steps.discover.outputs.any-shell }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Discover examples from the directory convention
@@ -46,10 +59,10 @@ jobs:
       matrix:
         dir: ${{ fromJSON(needs.discover.outputs.node) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -66,12 +79,101 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: npm run build --if-present
 
+  rust:
+    name: rust · ${{ matrix.dir }}
+    needs: discover
+    if: needs.discover.outputs.any-rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.discover.outputs.rust) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # SHA-pinned because it's third-party: same pin the SDK repos use.
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: stable
+      # Third-party too, so pinned by SHA on the same reasoning as above: a
+      # mutable tag is a write-anything hook into every rust build here.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ${{ matrix.dir }}
+      - name: Build (exact pinned versions from Cargo.lock)
+        working-directory: ${{ matrix.dir }}
+        run: cargo build --locked --all-targets
+
+  python:
+    name: python · ${{ matrix.dir }}
+    needs: discover
+    if: needs.discover.outputs.any-python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.discover.outputs.python) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ${{ matrix.dir }}/requirements.txt
+      - name: Install (exact pins from requirements.txt)
+        working-directory: ${{ matrix.dir }}
+        run: pip install -r requirements.txt
+      # Import-time errors are the failure a typechecker alone misses.
+      - name: Compile
+        working-directory: ${{ matrix.dir }}
+        run: python -m compileall -q .
+      - name: Typecheck
+        working-directory: ${{ matrix.dir }}
+        run: mypy .
+
+  shell:
+    name: shell · ${{ matrix.dir }}
+    needs: discover
+    if: needs.discover.outputs.any-shell == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.discover.outputs.shell) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # shellcheck is preinstalled on ubuntu runners. A CLI workflow example has
+      # nothing to compile, so parse + lint is the whole of what "builds" means
+      # for it.
+      - name: Parse and lint shell scripts
+        working-directory: ${{ matrix.dir }}
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(find . -type f -name '*.sh' | sort)
+          printf 'checking: %s\n' "${scripts[@]}"
+          for script in "${scripts[@]}"; do
+            bash -n "$script"
+          done
+          # -x resolves `source`d helpers instead of reporting SC1091 against
+          # them, and SCRIPTDIR resolves those paths relative to the script
+          # rather than the working directory. Without both, an example that
+          # splits itself over two files fails the gate for no defect.
+          shellcheck -x --source-path=SCRIPTDIR "${scripts[@]}"
+
   # Single required status check. The per-language jobs are a dynamic matrix and
   # are skipped when a language has no examples, so branch protection needs one
   # stable name to require.
   ci:
     name: CI
-    needs: [discover, node]
+    needs: [discover, node, rust, python, shell]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
