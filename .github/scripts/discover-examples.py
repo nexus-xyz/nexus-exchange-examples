@@ -32,6 +32,7 @@ import json
 import os
 import re
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -78,7 +79,31 @@ CONVENTION_HINT = (
     "inside a track (<track>/<example-name>/)"
 )
 
-MYPY_RE = re.compile(r"^mypy\b", re.IGNORECASE)
+# Must match `mypy` itself and not a package that merely starts with it:
+# `mypy-extensions` is one of mypy's own dependencies, so it shows up in any
+# fully-pinned requirements.txt and a `^mypy\b` test would accept it as proof
+# the typechecker is installed. Requiring the `==` keeps it to a real pin.
+MYPY_RE = re.compile(r"^mypy\s*(?:\[[^\]]*\])?\s*==", re.IGNORECASE)
+
+# requirements.txt options that put the pinned set somewhere this script can't
+# see it. `-r`/`-c` pull specs in from another file, `-e` installs from a tree
+# whose own dependencies float, and the index options change where packages come
+# from at all — an alternate index in a public example is also how dependency
+# confusion gets in. The `==` check below is only worth something if this file is
+# the whole answer, so anything that makes it partial is an error.
+DISALLOWED_REQUIREMENT_OPTIONS = {
+    "-r",
+    "--requirement",
+    "-c",
+    "--constraint",
+    "-e",
+    "--editable",
+    "-f",
+    "--find-links",
+    "-i",
+    "--index-url",
+    "--extra-index-url",
+}
 
 
 def iter_tracks() -> list[Path]:
@@ -101,6 +126,51 @@ def iter_candidates(track: Path) -> list[Path]:
     ]
 
 
+def iter_descendants(example: Path) -> Iterator[Path]:
+    """Every file under `example`, skipping build output and dot-directories.
+
+    Pruned the same way `iter_candidates` is: the ignored directories are
+    gitignored, so this only matters when the script is run in a working tree
+    that has them.
+    """
+    stack = [example]
+    while stack:
+        for child in sorted(stack.pop().iterdir()):
+            if child.is_dir():
+                if (
+                    not child.name.startswith(".")
+                    and child.name not in IGNORED_CHILD_DIRS
+                ):
+                    stack.append(child)
+            else:
+                yield child
+
+
+def nested_manifest(example: Path) -> str | None:
+    """Path of a manifest *below* `example`, if there is one.
+
+    A manifest a level too deep means the example is nested wrong, and saying so
+    beats the generic "nothing here says how to check it". It also keeps shell
+    detection honest: without this, a misplaced Python project that happens to
+    ship a `*.sh` would be checked as a shell example and its Python never built.
+    """
+    names = {manifest for manifest, _ in MANIFESTS}
+    for path in iter_descendants(example):
+        if path.name in names and path.parent != example:
+            return path.relative_to(ROOT).as_posix()
+    return None
+
+
+def has_shell_script(example: Path) -> bool:
+    """True if the example ships a `*.sh` anywhere the shell job would lint it.
+
+    That job finds scripts recursively, so discovery has to look recursively too
+    — otherwise an example keeping its scripts in `scripts/` is rejected as
+    unrecognised while the recipe that would have checked it works fine.
+    """
+    return any(path.match(SHELL_GLOB) for path in iter_descendants(example))
+
+
 def classify(example: Path, errors: list[str]) -> str | None:
     """Return the language of `example`, or None after recording an error."""
     rel = example.relative_to(ROOT).as_posix()
@@ -120,7 +190,15 @@ def classify(example: Path, errors: list[str]) -> str | None:
     if languages:
         return languages[0]
 
-    if any(example.glob(SHELL_GLOB)):
+    nested = nested_manifest(example)
+    if nested is not None:
+        errors.append(
+            f"{rel}: no manifest here, but there is one at {nested}. The example "
+            f"is a level too deep: {CONVENTION_HINT}."
+        )
+        return None
+
+    if has_shell_script(example):
         return "shell"
 
     manifests = ", ".join(manifest for manifest, _ in MANIFESTS)
@@ -177,11 +255,24 @@ def check_python(example: Path, rel: str, errors: list[str]) -> None:
         errors.append(f"{rel}: requirements.txt is not readable ({exc}).")
         return
 
-    specs = [
-        line.strip()
-        for line in lines
-        if line.strip() and not line.strip().startswith(("#", "-"))
-    ]
+    specs: list[str] = []
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("-"):
+            # `--hash=...` continuations and other per-spec options are fine;
+            # only the ones that move the pins out of this file are not.
+            option = line.split()[0].split("=", 1)[0]
+            if option in DISALLOWED_REQUIREMENT_OPTIONS:
+                errors.append(
+                    f"{rel}: requirements.txt uses `{option}`. Pin every "
+                    "dependency in this one file — an include, an editable "
+                    "install or an alternate index means the pins here aren't "
+                    "the whole set, which is all CI can check."
+                )
+            continue
+        specs.append(line)
 
     unpinned = [spec for spec in specs if "==" not in spec]
     if unpinned:

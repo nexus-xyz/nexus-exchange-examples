@@ -97,7 +97,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@v2
+      # Third-party too, so pinned by SHA on the same reasoning as above: a
+      # mutable tag is a write-anything hook into every rust build here.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ${{ matrix.dir }}
       - name: Build (exact pinned versions from Cargo.lock)
@@ -160,7 +162,11 @@ jobs:
           for script in "${scripts[@]}"; do
             bash -n "$script"
           done
-          shellcheck "${scripts[@]}"
+          # -x resolves `source`d helpers instead of reporting SC1091 against
+          # them, and SCRIPTDIR resolves those paths relative to the script
+          # rather than the working directory. Without both, an example that
+          # splits itself over two files fails the gate for no defect.
+          shellcheck -x --source-path=SCRIPTDIR "${scripts[@]}"
 
   # Single required status check. The per-language jobs are a dynamic matrix and
   # are skipped when a language has no examples, so branch protection needs one

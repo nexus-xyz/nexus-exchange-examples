@@ -103,6 +103,15 @@ requirement:
 | Python | `requirements.txt`, everything pinned by `==`, including `mypy` | `pip install -r requirements.txt`, `compileall`, `mypy .` |
 | Shell (CLI workflows) | at least one `*.sh`, and a README | `bash -n` and `shellcheck` on every script |
 
+**Python: keep `requirements.txt` self-contained.** No `-r`/`-c` includes, no
+`-e`, and no `--index-url`/`--extra-index-url` — the `==` pins are only a
+guarantee if that file is the whole dependency set, and an alternate index in a
+public example is how the wrong package gets installed. Discovery fails on all
+of these.
+
+**Shell: scripts can live wherever you like** — `run.sh` at the top or a
+`scripts/` directory both work, since CI finds them recursively.
+
 Your example's **language comes from its manifest, not its track.** An MCP
 example is a Node or Python project and is checked as one — `sdk-mcp/` says what
 the app is built on, not what toolchain builds it.
@@ -215,6 +224,12 @@ PR that you ran it end-to-end from a clean clone.
   > **If you rename it, re-point the protection rule.** A required check that no
   > longer runs blocks every PR forever, and the fix is a repo setting, not a
   > commit.
+
+  Required, but not required to be *current*: branches don't have to be up to
+  date with `main` to merge, so `CI` passing means your example built against the
+  catalog as it was when you pushed. That's fine while examples are independent.
+  Once one example can break another, requiring branches to be up to date is the
+  setting to revisit.
 - `main` requires linear history; PRs are squash-merged.
 - Reviewers read your example's README **as a reader would** and try to run it
   from a clean clone. If the five-minute path doesn't work, that's the review
