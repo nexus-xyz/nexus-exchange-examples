@@ -1,0 +1,1735 @@
+/*
+ * The platform page's stylesheet.
+ *
+ * WHY A CSS MODULE AT ALL. The rest of this app styles with inline objects out of
+ * lib/theme.ts, and that is right for a terminal: one token module, no cascade to
+ * reason about. But three things on this page cannot be expressed inline —
+ * keyframes, media queries, and `prefers-reduced-motion` — and the page needs all
+ * three because its hero is an animated order book that has to degrade to a static,
+ * fully legible one. A module scoped to this directory buys those three without
+ * touching app/globals.css, which the terminal shares.
+ *
+ * WHY EVERY COLOUR IS A CUSTOM PROPERTY. This page is multi-tenant: the same build
+ * serves Nexus and Acme with different palettes. A hex in here would be a hex that
+ * cannot re-skin. So the colours arrive as `--nx-*` custom properties set on the
+ * page root from lib/theme.ts (see `landingVars` in primitives.tsx), and nothing
+ * below names a colour of its own.
+ *
+ * SELECTOR DISCIPLINE. Single class selectors only, no element selectors, no
+ * descendant chains. The failure mode this avoids is a `.section` rule and a
+ * `.cta` rule silently cancelling each other's spacing; here every rule owns
+ * exactly one class and nothing inherits a margin it did not ask for.
+ */
+
+/* ============================== layout ============================== */
+
+/*
+ * The content column.
+ *
+ * 1180 rather than the old 1120, and the gutter is fluid: the page's widest band
+ * is a two-column split with a rule down the middle, and at 1120 the right column
+ * lost its measure before the left one ran out of headline.
+ */
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 clamp(20px, 4vw, 40px);
+}
+
+/*
+ * The wide container, for the nav and the hero.
+ *
+ * 1180 is a READING measure and the body sections keep it — prose set across 1560
+ * is a worse page, not a more modern one. But the two bands that are not reading
+ * are the two that set the page's scale: a nav pinned to a narrow column reads as a
+ * document, and a hero whose product shot is capped at 560px is showing a thumbnail
+ * of the thing it is selling. 1560 is roughly the viewport of a 15-inch laptop, so
+ * on the machine most of these readers use, the hero is effectively edge to edge.
+ */
+.wrapWide {
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 0 clamp(20px, 4vw, 40px);
+}
+
+/*
+ * A section.
+ *
+ * Vertical rhythm is one clamp for every band on the page. Density varies by what
+ * a band contains — a table band is denser than an argument band — but the space
+ * BETWEEN bands does not, because varying both is how a page stops having a rhythm
+ * at all.
+ */
+.band {
+  position: relative;
+  padding: clamp(64px, 9vw, 116px) 0;
+  scroll-margin-top: 52px;
+}
+
+/** A beat rather than a movement — the five-minute strip and the tape sit here. */
+.bandTight {
+  padding: clamp(36px, 5vw, 56px) 0;
+}
+
+/**
+ * The section header.
+ *
+ * Two columns, not one: eyebrow and title on the left, the qualifying sentence on
+ * the right, a hairline between them. It is the page's most repeated element and
+ * the single biggest reason the old version read as a stack — a centred column of
+ * heading-over-paragraph, fourteen times. The split also happens to be the shape of
+ * a book row (a label and its value), which is the vernacular this page is written in.
+ */
+.headSplit {
+  display: grid;
+  /*
+   * `minmax(0, 1fr)` and not the implicit `auto` track a one-column grid gets by
+   * default. An `auto` track is sized by its content's MIN-CONTENT width, so one
+   * nowrap label or one long identifier anywhere inside pushes the track — and
+   * therefore the page — wider than the viewport. This is the single most common
+   * source of horizontal overflow at 390px, and the fix has to be on every grid
+   * here rather than on the one that was caught.
+   */
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(18px, 3vw, 40px);
+  align-items: start;
+  margin-bottom: clamp(28px, 4vw, 52px);
+}
+
+@media (min-width: 860px) {
+  .headSplit {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  }
+  /* The rule lives on the right column so it never dangles when the grid collapses. */
+  .headAside {
+    padding-left: clamp(20px, 3vw, 36px);
+    border-left: 1px solid var(--nx-l1);
+  }
+}
+
+/*
+ * The section qualifier — a label in the margin, a rule, and the text.
+ *
+ * The label column is fixed at 88px so consecutive notes align down the page, and at
+ * phone width that fixed column plus its gutter is a third of the viewport. The prose
+ * beside it was setting to about thirty characters, which is half a comfortable measure
+ * and reads as ragged rather than as a margin note — and Stack.tsx alone stacks five of
+ * these in a row.
+ *
+ * So below 620px the label goes ABOVE the text rather than beside it. Nothing is lost:
+ * alignment down the page is what the fixed column buys, and there is no second column
+ * left to align to. Same collapse, and the same reason for it, as `.headSplit`.
+ */
+.note {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+@media (min-width: 620px) {
+  .note {
+    grid-template-columns: minmax(0, 88px) minmax(0, 1fr);
+    gap: 20px;
+  }
+}
+
+/** The asymmetric body split. 7/5, never 6/6 — an even split is the centred stack rotated. */
+.split {
+  display: grid;
+  /* See `.headSplit` — a one-column grid must state a zero-floor track. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(20px, 3vw, 36px);
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .split {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  }
+  .splitFlip {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+}
+
+/*
+ * The top bar at phone width.
+ *
+ * Nav.tsx's own comment explains why the bar is not sticky: seven controls wrap to
+ * three rows at 390px, and a pinned bar that tall eats a fifth of the viewport. It
+ * also notes the usual fix needs a stylesheet the component did not own. It owns one
+ * now, so here is the fix — the links become a single horizontally scrolling line
+ * below the identity row, and the call to action moves up beside the wordmark. Two
+ * rows instead of three, no link hidden, nothing wrapping.
+ */
+@media (max-width: 760px) {
+  .navLinks {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+  }
+  .navCta {
+    order: 2;
+    margin-left: auto;
+  }
+}
+
+/* ============================== motion ============================== */
+
+/*
+ * The page-load sequence, and then an idle loop.
+ *
+ * One clock for the whole hero: 9.6s. Four order chits fly at 1.2s, 3.6s, 6.0s and
+ * 8.4s inside that cycle, each landing 1.15s after it launches, and the row it
+ * lands on flashes at exactly that moment. Keeping arrivals and flashes on one
+ * period is what stops the book drifting out of sync with its own fan after a few
+ * minutes — there is no JavaScript here to re-align them.
+ */
+
+@keyframes nxRise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nxFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes nxDraw {
+  from {
+    stroke-dashoffset: 420;
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+/** The order in flight. 12% of the cycle travelling, the rest parked and invisible. */
+@keyframes nxFly {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  4% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  11% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  12% {
+    offset-distance: 100%;
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+    transform: scale(0.5);
+  }
+}
+
+/** The level accepting it. */
+@keyframes nxHit {
+  0% {
+    background-color: transparent;
+  }
+  6% {
+    background-color: var(--nx-hit);
+  }
+  22% {
+    background-color: transparent;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/** Depth breathing. Small — a book that swings 40% every four seconds is a chart. */
+@keyframes nxBreathe {
+  from {
+    transform: scaleX(0.94);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes nxTape {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animRise {
+  opacity: 0;
+  animation: nxRise 620ms cubic-bezier(0.22, 0.61, 0.36, 1) var(--d, 0s) both;
+}
+
+.animFade {
+  opacity: 0;
+  animation: nxFade 520ms ease-out var(--d, 0s) both;
+}
+
+
+
+
+
+/** Bids fill from the left, so their bar grows from the other edge. */
+
+/*
+ * Scroll reveals, with no JavaScript and no observer.
+ *
+ * A view-progress timeline does exactly what an IntersectionObserver would here,
+ * and where it is unsupported the element is simply already visible — which is the
+ * correct fallback for content, and the reason this is not written the other way
+ * round with an opacity:0 default.
+ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: nxRise linear both;
+      animation-timeline: view();
+      animation-range: entry 6% cover 20%;
+    }
+  }
+}
+
+/*
+ * Reduced motion.
+ *
+ * globals.css already collapses every animation to 0.001ms app-wide, which stops
+ * things moving but leaves anything that animates FROM opacity:0 stuck invisible
+ * at its first frame. So this block is about legibility rather than motion: park
+ * the chits, hold the paths drawn, and hand the reader a complete, static book.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .animRise,
+  .animFade,
+  .reveal {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+  .animDraw {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+    opacity: 1;
+    animation: none;
+  }
+  .chit {
+    offset-distance: 100%;
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+  .rowHit,
+  .bar {
+    animation: none;
+  }
+  .tapeTrack {
+    animation: none;
+  }
+}
+
+/* ============================== the tape ============================== */
+
+/*
+ * The section divider, and the page's one structural motif.
+ *
+ * A tape is a real artifact of this world — the printed record of what traded —
+ * so it divides the page's movements with something the subject already owns
+ * rather than with a rule and 80px of air. It also repeats the fan-in argument in
+ * passing: every print carries the venue that sent it, and they are all prints
+ * from one book.
+ *
+ * Decorative to a screen reader: the venue names and the argument they make are
+ * both stated in prose elsewhere, and a marquee of numbers read aloud is noise.
+ */
+.tape {
+  overflow: hidden;
+  border-top: 1px solid var(--nx-l1);
+  border-bottom: 1px solid var(--nx-l1);
+  background: var(--nx-chrome);
+  /* The ends fade into the page so the loop point is never the thing you notice. */
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.tapeTrack {
+  display: flex;
+  width: max-content;
+  animation: nxTape 64s linear infinite;
+}
+
+/* ============================== controls ============================== */
+
+/*
+ * The primary action is ACHROMATIC.
+ *
+ * This is the page's one real colour rule and the reason it no longer reads as
+ * black-plus-an-accent: green and red mean bid and ask, and nothing else on this
+ * page is allowed to borrow them. A green fill on a button is the accent spent on
+ * a control that carries no direction — and spending it there is precisely what
+ * drains the colour of meaning by the time you reach the book.
+ */
+.ctaPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 22px;
+  border: 1px solid var(--nx-hi);
+  border-radius: 6px;
+  background: var(--nx-hi);
+  color: var(--nx-chrome);
+  text-decoration: none;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.ctaPrimary:hover {
+  opacity: 0.88;
+}
+
+.ctaSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--nx-l2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--nx-txt);
+  text-decoration: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ctaSecondary:hover {
+  border-color: var(--nx-l3);
+  background: var(--nx-sel);
+}
+
+/** A quiet link that only announces itself on hover. */
+.linkQuiet {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--nx-l2);
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.linkQuiet:hover {
+  color: var(--nx-hi);
+  border-bottom-color: var(--nx-l3);
+}
+
+/*
+ * The navigation tap tier, on a touch surface.
+ *
+ * `audit/floor.json` grades anything inside a nav landmark at 44px, and it grades it
+ * at the mobile AND the tablet viewport — so the breakpoint is the 1023px globals.css
+ * already uses to switch the terminal's own controls onto the touch tiers, not the
+ * 760px this page's nav layout happens to change at. The top bar's links measured 34px
+ * and the footer's 30, which is the default tier applied to controls the floor's
+ * classifier reads as navigation.
+ *
+ * Both heights live here rather than inline for the reason globals.css records against
+ * `.nx-segmented`: an inline `min-height` wins over every class rule, so a control that
+ * states its own height inline can never be raised by a media query. These two rules
+ * also have to sit BELOW `.ctaSecondary`, which carries a 44px of its own — the nav
+ * links wear both classes and the later declaration is the one that lands.
+ */
+.navLink {
+  min-height: 34px;
+}
+
+.footerLink {
+  min-height: 30px;
+}
+
+@media (max-width: 1023px) {
+  .navLink,
+  .footerLink {
+    min-height: 44px;
+  }
+}
+
+/** A whole cell that is a link — the hero facts, the capability rows. */
+.cellLink {
+  display: block;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.cellLink:hover {
+  background: var(--nx-sel);
+}
+
+.rowHover {
+  transition: background 0.12s;
+}
+
+.rowHover:hover {
+  background: var(--nx-sel);
+}
+
+/* ============================== product stills ============================== */
+
+/*
+ * The frame around a screenshot.
+ *
+ * These are dark captures on a dark page and without an edge they dissolve into
+ * it. The edge is drawn rather than borrowed: no rounded "browser" mockup with
+ * three coloured dots, because the thing being shown is not a website — it is a
+ * terminal, and a terminal's own chrome is a hairline and a label strip. So the
+ * frame is the same panel treatment every other surface on this page uses, with a
+ * caption rail on top, and the only concession to depth is a soft drop shadow that
+ * lifts it off the ground plane the sections share.
+ */
+.frame {
+  position: relative;
+  border: 1px solid var(--nx-l2);
+  border-radius: 10px;
+  background: var(--nx-chrome);
+  overflow: hidden;
+  box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+}
+
+.frameRail {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--nx-l1);
+  background: var(--nx-panel);
+}
+
+/**
+ * The shot itself. Aspect locked to the capture so nothing reflows as it decodes.
+ *
+ * The fill is the panel surface rather than the page ground, and that is about the
+ * moment before the image arrives: these captures are large, and a 700px-tall box of
+ * the same black as the page behind it reads as a hole in the layout. One step of
+ * elevation makes an undecoded frame read as an empty surface instead.
+ */
+.shot {
+  position: relative;
+  aspect-ratio: 1440 / 900;
+  overflow: hidden;
+  background: var(--nx-panel);
+}
+
+.shotImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+/*
+ * The re-skin comparison.
+ *
+ * Two captures of the SAME screen at the SAME frozen tick, and the incoming one is
+ * revealed by a wipe rather than a crossfade. A crossfade dissolves one image into
+ * another and reads as two pictures; a wipe keeps every pixel of structure locked
+ * in place and moves only the colour across it, which is exactly the claim — the
+ * product is the same build, the palette is config.
+ */
+.compare {
+  position: absolute;
+  inset: 0;
+}
+
+.compareLayer {
+  position: absolute;
+  inset: 0;
+  /* Fully revealed by default so the layer under a `clip-path` transition has
+     something to sit against, and so the first paint is never blank. */
+  clip-path: inset(0 0 0 0);
+  transition: clip-path 620ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/** Hidden by wiping it off to the right rather than fading — same reason as above. */
+.compareOff {
+  clip-path: inset(0 100% 0 0);
+}
+
+.compareCaption {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--nx-l2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+/*
+ * Reduced motion gets the honest version of the same argument: both frames, at
+ * once, side by side. No wipe to miss and nothing to operate.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .compare {
+    position: relative;
+    inset: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+  }
+  .compareLayer,
+  .compareOff {
+    position: relative;
+    inset: auto;
+    clip-path: none;
+    transition: none;
+  }
+  /* Two frames side by side need twice the box, or both get letterboxed inside an
+     aspect ratio that was sized for one. */
+  .shotCompare {
+    aspect-ratio: 2880 / 900;
+  }
+}
+
+/** The tour's frames swap instantly under reduced motion; the tabs still work. */
+.tourLayer {
+  transition: opacity 300ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tourLayer {
+    transition: none;
+  }
+}
+
+/** A blown-up crop beside a full frame: scale is one argument, craft is another. */
+.crop {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--nx-l2);
+  border-radius: 8px;
+  background: var(--nx-bg);
+}
+
+/*
+ * The magnified region.
+ *
+ * THE MAGNIFICATION LIVES HERE, NOT AT THE CALL SITE, because it is
+ * breakpoint-dependent and an inline style cannot be. Both values were measured
+ * against the box they have to fill rather than picked: the region of interest is
+ * ~282 capture units wide, the box is ~620px in the desktop column and ~350px on a
+ * phone, so 2.2x and 1.25x are the factors that make it reach both edges. A single
+ * factor gets one of the two wrong, and both ways of being wrong look accidental —
+ * 1.5x left a third of the desktop box empty, and it clipped a price in half at
+ * 390px, which is worse than showing no crop at all.
+ *
+ * `transform-origin: 0 0` with the translate written AFTER the scale, so the offsets
+ * stay in the capture's own 1440x900 units and the region's top-left lands on the
+ * box's top-left. The offsets come in as `--cx` / `--cy` from the call site, because
+ * WHICH region is content and HOW MUCH it is enlarged is layout.
+ */
+.cropInner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1440px;
+  height: 900px;
+  transform-origin: 0 0;
+  transform: scale(1.25) translate(var(--cx, 0), var(--cy, 0));
+}
+
+@media (min-width: 900px) {
+  .cropInner {
+    transform: scale(2.2) translate(var(--cx, 0), var(--cy, 0));
+  }
+}
+
+/*
+ * And a third factor, for the phones narrower than the one 1.25 was measured on.
+ *
+ * The box is 348px wide at 390 and 333 at 375, and 1.25 was fitted to the first of
+ * those — so at 375 the region is 16 capture units wider than the box and the last
+ * digit of every price falls off the right edge. That is the exact failure the note
+ * above records as worse than showing no crop at all, recurring one breakpoint down.
+ * 1.18 is 333 divided by the region's 282 units, measured the same way the other two
+ * were.
+ */
+@media (max-width: 400px) {
+  .cropInner {
+    transform: scale(1.18) translate(var(--cx, 0), var(--cy, 0));
+  }
+}
+
+
+/* ============================== code ============================== */
+
+/*
+ * A block that must fit rather than scroll.
+ *
+ * Most code on this page is a config file and a config file is allowed to scroll —
+ * see `CodeBody`. The repository tree in Stack.tsx is the exception its own comment
+ * already claims it is: its right-hand column is annotation, not code, and annotation
+ * that runs off the edge is a clipped sentence rather than a line you drag to finish.
+ * At 390px the tree's longest line needs about 317px and has 318, so it cleared the
+ * viewport by a pixel and lost the column outright at 375.
+ *
+ * Three levers, because no one of them is enough on its own and the first two are the
+ * cheap ones: a step down in size, and a tighter gutter — 12px of padding rather than
+ * 16 on a block whose content is already the full width of its box. Together they put
+ * the tree's longest line inside 375px.
+ *
+ * The third is `pre-wrap`, and it is a guarantee rather than a layout: if an annotation
+ * is ever lengthened past what the first two buy back, the line folds instead of
+ * silently losing its tail off the right edge. A folded line is visibly wrong and a
+ * clipped one is invisibly wrong, and this block's whole job is to be read.
+ *
+ * All three live here and not inline because they change at a breakpoint, and an inline
+ * value would win over the query that changes them.
+ */
+.codeFit {
+  font-size: 12px;
+  padding: 16px;
+}
+
+.codeFitLine {
+  white-space: pre;
+}
+
+@media (max-width: 760px) {
+  /* The extra left padding is the other half of the hanging indent below — the pair
+     has to be split across the two elements, because padding on the LINE would narrow
+     the line and cause the very wrapping it is there to dress. */
+  .codeFit {
+    font-size: 10.5px;
+    padding: 12px 12px 12px calc(12px + 4ch);
+  }
+  /* A hanging indent on the fold, so a line that does run over reads as the
+     continuation of the entry above it rather than as a new entry in the tree — which
+     is what a wrapped word hard against the left margin looks like in a file listing.
+     The negative indent pulls the first line box back over the padding, so a line that
+     does not wrap is exactly where it was. */
+  .codeFitLine {
+    white-space: pre-wrap;
+    text-indent: -4ch;
+  }
+}
+
+/* ============================== detail ============================== */
+
+/*
+ * Focus, and the one descendant selector in this file.
+ *
+ * app/globals.css gives the whole app a 1px focus ring in a hardcoded green. That is
+ * two problems on this page: 1px at one pixel of offset is thin against a black
+ * ground, and a literal green does not re-skin — a keyboard user on a partner venue
+ * gets Nexus's accent. Both are fixed here rather than there because the terminal
+ * shares that stylesheet and this is not the place to change its focus ring.
+ *
+ * A descendant selector, against this file's own rule, because there is no other way
+ * to reach "every focusable thing on one route" — and the alternative is a class on
+ * forty call sites that someone will eventually forget.
+ */
+.page :focus-visible {
+  outline: 2px solid var(--nx-hi);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/** Numbers align in columns or they are not numbers. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/**
+ * The FAQ marker.
+ *
+ * `list-style: none` plus a drawn mark, because the native triangle is the one
+ * piece of chrome on this page that comes from the browser's design system rather
+ * than ours, and it shows.
+ */
+.faqItem {
+  cursor: pointer;
+  list-style: none;
+}
+
+.faqItem::-webkit-details-marker {
+  display: none;
+}
+
+.faqSign {
+  transition: transform 0.18s ease;
+}
+
+/* `[open]` is the state the browser owns, so the rotation needs no client component. */
+.faqOpen[open] .faqSign {
+  transform: rotate(45deg);
+}
+
+/* ============================== hero stage ==============================
+ *
+ * The cursor-responsive product frame. Two custom properties come from
+ * HeroStage.tsx — `--px` and `--py`, the pointer's position across the element as
+ * 0..1 — and every visual decision is taken here, so reduced motion and coarse
+ * pointers are switched off with media queries rather than with branches in the
+ * component.
+ */
+.heroStage {
+  --px: 0.5;
+  --py: 0.5;
+  perspective: 1900px;
+  /* The lift needs somewhere to go; without it the raised frame clips at the band. */
+  padding: 6px 0 14px;
+  /*
+   * Wider than its container, but not edge to edge.
+   *
+   * The hero wrap is a 1560 reading column and the product is the one element that
+   * wants the glass instead — but full-bleed made it a wall: nothing framed it, and
+   * a UI running to both edges reads as a background rather than as a thing being
+   * shown. 80% of the viewport keeps the breakout while leaving margin on either
+   * side to hold it, which is what makes it read as a product on a page.
+   *
+   * Below 1080 it simply fills its container: at that width 80vw is NARROWER than
+   * the column it is breaking out of, so the rule would shrink the image instead of
+   * enlarging it.
+   */
+  width: 100%;
+}
+
+.heroStageInner {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  border-radius: 12px;
+}
+
+.heroStageGlare {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 320ms ease;
+  /* Positioned by the same two properties as the tilt, so the highlight and the
+     lean share one origin — light and geometry disagreeing is what makes a tilt
+     read as a sticker. */
+  background: radial-gradient(
+    46% 60% at calc(var(--px) * 100%) calc(var(--py) * 100%),
+    rgba(255, 255, 255, 0.1),
+    rgba(255, 255, 255, 0) 70%
+  );
+}
+
+/*
+ * Motion only for a mouse. A tilt bound to a finger is a smudge that fights the
+ * scroll, and on a trackpad-less touch device the resting state is the only state
+ * anyone would ever see.
+ */
+@media (min-width: 1080px) {
+  .heroStage {
+    width: min(80vw, 1800px);
+    /* 50% is half the parent column; 40vw is half the new width. The difference
+       recentres the breakout on the viewport rather than on the column. */
+    margin-inline: calc(50% - min(40vw, 900px));
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .heroStage:hover .heroStageInner {
+    /* Small on purpose: 4.5 degrees reads as material, 12 reads as a toy. The
+       translateZ is what keeps the near edge from shearing as it rotates. */
+    transform: rotateX(calc((0.5 - var(--py)) * 4.5deg)) rotateY(calc((var(--px) - 0.5) * 5.5deg))
+      translateZ(14px);
+  }
+
+  .heroStage:hover .heroStageGlare {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroStageInner,
+  .heroStageGlare {
+    transition: none;
+  }
+  .heroStage:hover .heroStageInner {
+    transform: none;
+  }
+  .heroStage:hover .heroStageGlare {
+    opacity: 0;
+  }
+}
+
+/*
+ * The funding rail row.
+ *
+ * Seven is prime, which is the whole reason this is not an auto-fit grid. Auto-fit
+ * chose six across the content column and dropped Wires onto a row of its own beside
+ * five empty cells; flex-grow then fixed the hole by stretching that one cell across
+ * the full width, which reads as a banner rather than a seventh peer. So the column
+ * count is stated, and it is stated as a number that divides the list evenly at the
+ * width most readers are at: all seven on one line, because on this row breadth IS
+ * the message and a single line is what says it.
+ *
+ * Below that, 4 and 2 — both leave one short final row, which is what a list of seven
+ * looks like and is unremarkable. The 6-up hole is the only arrangement that read as
+ * broken, and it is the only one this rules out.
+ */
+.rails {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+}
+
+@media (min-width: 700px) {
+  .rails {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .rails {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+/*
+ * The seventh rail, at two across.
+ *
+ * The rules between these cells are drawn by a 1px gap over the container's hairline
+ * fill, which means an unfilled grid cell is not empty — it is a rectangle of hairline
+ * colour, and at 390px the odd last row put one beside Wires. Stretching the cell is
+ * the fix the 6-up arrangement rejected, and the two cases are not the same: there a
+ * stretched cell sat on a row that should have held six and read as a banner, here it
+ * is the only cell on its row whether it stretches or not, so the choice is between a
+ * wide final card and a visible hole in the slab.
+ *
+ * `span 2` rather than `1 / -1` because it closes both short rows with one rule: seven
+ * items leave exactly one cell over at two across and at four across, so widening the
+ * last card by one track fills it either way. Above 1100px all seven sit on one line
+ * and there is nothing to fill, which is why the rule stops there.
+ */
+@media (max-width: 1099px) {
+  .railsLast {
+    grid-column: span 2;
+  }
+}
+
+/*
+ * A four-up card row that stays four-up.
+ *
+ * Auto-fit chose three across the content column and left the fourth group alone on
+ * a row with two empty cells — the same orphan the funding rails had, from the same
+ * cause: a stated number of items and an unstated number of columns. Four groups,
+ * four columns, then two, then one, all of which divide four.
+ */
+.quad {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+}
+
+@media (min-width: 640px) {
+  .quad {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1040px) {
+  .quad {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/*
+ * A two-column comparison table that CANNOT become four columns.
+ *
+ * The you-run/we-run split was an auto-fit grid, which is correct for cards and
+ * wrong for a table: at the content column's width auto-fit fitted four tracks, so
+ * row two of a two-column table rendered beside row one and the pairing silently
+ * broke. A table's column count is part of its meaning and is never negotiable with
+ * the viewport — it stays two and the cells get narrow.
+ */
+.pairs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+}
+
+/* ======================= the build-vs-deploy table ======================= */
+
+/* ======================= the section rail ======================= */
+
+/*
+ * The sticky rail. Translucent with a blur rather than opaque, so the page passes
+ * UNDER it instead of stopping at it — an opaque bar reads as a second chrome and
+ * this one is meant to read as an edge of the page itself.
+ */
+.rail {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  /* `--nx-read` is written by the component on scroll; 0 until then. */
+  --nx-read: 0;
+  background: color-mix(in srgb, var(--nx-chrome) 82%, transparent);
+  backdrop-filter: saturate(140%) blur(12px);
+  -webkit-backdrop-filter: saturate(140%) blur(12px);
+  border-top: 1px solid var(--nx-l1);
+}
+
+/*
+ * The bottom rule, and the reading-progress line drawn over it.
+ *
+ * Two pseudo-elements on the same 1px row: the track, always there, and the fill,
+ * scaled by how far down the page the reader is. A border that a sticky bar has to
+ * draw anyway is the cheapest possible place to put this — no new element, nothing
+ * added to the top of the viewport, and a reader who never notices it loses nothing.
+ */
+.rail::before,
+.rail::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 1px;
+  pointer-events: none;
+}
+
+.rail::before {
+  right: 0;
+  background: var(--nx-l2);
+}
+
+.rail::after {
+  width: 100%;
+  background: var(--nx-hi);
+  opacity: 0.32;
+  transform: scaleX(var(--nx-read));
+  transform-origin: left center;
+}
+
+/* The horizontal scroller. The scrollbar is hidden because the bar is 44px tall and
+   a scrollbar inside it would eat a fifth of the row; the edge fades below are what
+   tell a reader there is more. */
+.railTrack {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+
+.railTrack::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .railTrack {
+    scroll-behavior: auto;
+  }
+}
+
+.railItem {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  /* Full-height hit area: the whole 44px row is the target, not a 28px pill inside
+     it. This is the nav tier of the tap scale, and it is the one place the budget is
+     always spent. */
+  align-self: stretch;
+  padding: 0 10px;
+  text-decoration: none;
+  font-size: 12.5px;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  transition: color 0.18s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .railItem:hover {
+    color: var(--nx-txt) !important;
+  }
+}
+
+/*
+ * The mark. One element for the whole rail, translated between items.
+ *
+ * `width` transitions alongside `transform` so a jump from a short label to a long
+ * one grows as it travels rather than snapping at the end. 220ms with a standard
+ * ease-out is long enough to be followed and short enough that a fast scroll does
+ * not leave the mark trailing behind the ink.
+ */
+.railMark {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 1.5px;
+  background: var(--nx-hi);
+  border-radius: 1px;
+  transition: transform 0.22s cubic-bezier(0.32, 0.72, 0, 1), width 0.22s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.18s ease;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .railMark {
+    transition: opacity 0.18s ease;
+  }
+}
+
+/*
+ * A three-up card row that stays three-up.
+ *
+ * Six cells, and the same reason `.quad` exists: auto-fit picks a count from the
+ * viewport and six divides by three, two and one — so a stated ladder closes the
+ * grid at every width instead of orphaning the sixth at whatever width fits five.
+ */
+.trio {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+}
+
+@media (min-width: 620px) {
+  .trio {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 980px) {
+  .trio {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/*
+ * The fee slider.
+ *
+ * Native `input[type=range]` with the platform's own chrome would be the one control
+ * on this page wearing macOS blue, so the track and thumb are restated in the app's
+ * tokens. Both vendor prefixes are required: `-webkit-slider-thumb` and
+ * `-moz-range-thumb` cannot be combined into one rule, because a selector either
+ * engine does not recognise invalidates the whole block for it.
+ */
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--nx-l3);
+}
+
+.range::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--nx-l3);
+}
+
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--nx-hi);
+  /* A ring in the surface colour, so the thumb reads as sitting above the track
+     rather than threaded onto it. */
+  box-shadow: 0 0 0 3px var(--nx-sunk);
+  border: none;
+}
+
+.range::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--nx-hi);
+  box-shadow: 0 0 0 3px var(--nx-sunk);
+  border: none;
+}
+
+.range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--nx-hi);
+  outline-offset: 2px;
+}
+
+/* ======================= the phone-shot carousel ======================= */
+
+/*
+ * Three phone frames, side by side on a desktop and one at a time on a phone.
+ *
+ * WHY THIS IS NOT LEFT AS A STACK. The three captures are 390x844 each, so stacked
+ * at phone width they are three near-full screens of scrolling to make one point
+ * ("the phone layout is real"). That is the most expensive way this page spends a
+ * reader's thumb, and it buys the same argument the first frame already made. At 390
+ * the band around this was 4.9 viewport-heights; the carousel is the single biggest
+ * cut available on the page.
+ *
+ * WHY THE BREAK IS AT 700 AND NOT AT A ROUND PHONE WIDTH. It is the width at which
+ * the row stops being a row: below roughly 700px the auto-fit grid can no longer fit
+ * three 210px tracks and drops to two, which orphans the third frame on a second row.
+ * So the carousel takes over exactly when the side-by-side reading is no longer
+ * available, rather than at a number chosen because phones are near it.
+ *
+ * WHY IT IS SCROLL-SNAP AND NOT A COMPONENT. A carousel that needs JavaScript to
+ * reach its second slide shows one slide to anyone whose bundle failed, and this
+ * component is a server component that has no reason to stop being one. Snap points
+ * are the browser's own carousel and they cost nothing.
+ */
+.shots {
+  display: grid;
+  /* Three phones fit a desktop row and stack to one column below — the desktop
+     geometry this file inherited from the component, unchanged. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 18px;
+  justify-items: center;
+}
+
+/*
+ * The slide. On a desktop it is a grid cell that does nothing; at phone width it is
+ * the unit the scroller snaps to, and the frame inside it stays capped at 260px so a
+ * slide is a phone on a page rather than a phone that IS the page.
+ */
+.shotSlide {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  width: 100%;
+}
+
+/* The frame itself. Capped at 260 in the desktop row; the carousel overrides the cap
+   below, because a slide that is exactly as wide as the rail has nothing left over to
+   show that a second slide exists. */
+.shotFigure {
+  margin: 0;
+  width: 100%;
+  max-width: 260px;
+}
+
+/* The dot strip is a phone-only affordance: on a desktop all three frames are
+   visible at once and a position indicator would be indicating nothing. */
+.shotDots {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .shots {
+    display: flex;
+    /* 12 rather than the desktop row's 18, because the neighbouring slide is scaled to
+       0.96 and gives back about 6px of its own — so the gap READS as 18 while leaving
+       6px more of the next frame on screen. Literal overlap was tried and rejected:
+       these frames have a drawn bezel, so overlapping them runs one frame's border
+       across another's captured UI, which reads as a rendering fault rather than as
+       depth — and it would undermine the section's claim that these are three real
+       captures of one build. The scale does the same job without lying about it. */
+    gap: 12px;
+    overflow-x: auto;
+    /* `mandatory`, not `proximity`: there are three slides and every resting
+       position between them is a wrong one. */
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    /* The scrollbar would sit under a 560px-tall frame and be read as part of the
+       captured UI. The dots below are what say there is more. */
+    scrollbar-width: none;
+  }
+
+  .shots::-webkit-scrollbar {
+    display: none;
+  }
+
+  /*
+   * THE PEEK, and why the slide is narrower than the rail.
+   *
+   * A slide the exact width of the rail is a carousel that looks like a picture. The
+   * frame fills the viewport, the next one is perfectly offscreen, and the only thing
+   * saying there are three is a 6px dot 500 pixels further down — which a reader
+   * scrolling vertically past a phone screenshot never looks at. Every reader who did
+   * not think to swipe saw one third of this section.
+   *
+   * A slide narrower than the rail leaves the next frame's edge on screen, and a
+   * partially visible thing is the one affordance a carousel has that reads without
+   * being taught. The width is not arbitrary: the frame used to cap at 260 inside a
+   * 350 slide, so 45px of dead gutter sat on each side of every frame. That gutter is
+   * what pays for the peek.
+   *
+   * CENTRED, and what it takes to centre honestly. The focused frame is the subject,
+   * so it belongs in the middle of the reader's view rather than against one edge.
+   * The obvious objection to centring is that the FIRST slide cannot centre — there
+   * is nothing to its left to push it inward, so it either sits left-aligned anyway
+   * or opens with a blank gutter. The answer is that the rail carries that gutter
+   * itself: `padding-inline` of exactly half the leftover width means slide one comes
+   * to rest centred at scroll offset 0, and slide three centred at the scroll
+   * maximum, with no JavaScript measuring anything. Every slide centres, including
+   * the two that could not.
+   *
+   * The rail also bleeds out to the viewport edges. Centring inside the section's
+   * text column would centre the frame on the COLUMN while the reader perceives the
+   * SCREEN, which is off by half a gutter and reads as a mistake; running the rail
+   * edge to edge makes the centred frame actually centred, and gives the peek and the
+   * fade the screen edge to work against.
+   */
+  .shots {
+    /* Viewport-relative so the width never depends on the padding that is computed
+       from it — a percentage here would resolve against the padded content box and
+       chase its own tail. */
+    --nx-shot-w: min(280px, 72vw);
+    /* The section's own gutter, negated: `clamp(20px, 4vw, 40px)` is `.wrap`'s
+       padding, so this lands the rail exactly on the viewport edge and never past it. */
+    --nx-shot-bleed: clamp(20px, 4vw, 40px);
+    margin-inline: calc(-1 * var(--nx-shot-bleed));
+    /* 100% is the rail's containing block — the section column — so the bled width is
+       that plus both gutters. Half the remainder either side is what centres slide one
+       at offset 0 and slide three at the end. */
+    padding-inline: calc((100% + 2 * var(--nx-shot-bleed) - var(--nx-shot-w)) / 2);
+  }
+
+  .shotSlide {
+    flex: 0 0 var(--nx-shot-w);
+    scroll-snap-align: center;
+  }
+
+  .shotFigure {
+    max-width: none;
+  }
+
+  /*
+   * THE EDGE FADE, and why it is animated rather than painted once.
+   *
+   * The peek says "there is another frame". The fade says which direction it is in,
+   * by dissolving the rail's content into the page at the edge the content continues
+   * past. A static fade cannot do that: the last slide comes to rest flush against
+   * the rail's right edge, so a permanent right-hand fade would dim the final frame
+   * exactly when there is nothing further to promise — which reads as a rendering
+   * fault, not an affordance.
+   *
+   * So both edges are driven by the rail's own scroll offset. The right fade is on
+   * until the last few percent of travel and then lifts; the left fade is off until
+   * the reader has moved, then stays. At either end the fade is on the side that has
+   * something behind it, and never on the side that does not.
+   *
+   * A mask rather than a gradient overlay on purpose: a mask makes pixels
+   * transparent, so it needs to know nothing about the colour of the band behind it.
+   * An overlay would have to name a background, and would be wrong the day this
+   * section moves to a raised band.
+   */
+  .shots {
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--nx-shot-fade-l)),
+      linear-gradient(to left, transparent 0, #000 var(--nx-shot-fade-r));
+    mask-composite: intersect;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--nx-shot-fade-l)),
+      linear-gradient(to left, transparent 0, #000 var(--nx-shot-fade-r));
+    -webkit-mask-composite: source-in;
+  }
+
+  .shotDots {
+    position: relative;
+    display: flex;
+    gap: 5px;
+    /* `fit-content` and auto margins rather than `justify-content: center`, because
+       the travelling mark below is positioned from this box's left edge and needs
+       that edge to be the first dot's. */
+    width: fit-content;
+    margin: 0 auto;
+  }
+}
+
+/*
+ * Both fade widths default to 0, which makes each gradient a zero-length ramp — i.e.
+ * fully opaque, i.e. no mask at all. A browser without scroll-driven animations
+ * therefore gets the plain rail rather than a fade frozen on one side.
+ */
+@property --nx-shot-fade-l {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --nx-shot-fade-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@supports (animation-timeline: scroll(self x)) {
+  @media (max-width: 700px) {
+    .shots {
+      animation: nxShotFadeL linear both, nxShotFadeR linear both;
+      /* `scroll(self x)` — the rail is its own scroller, so this needs no named
+         timeline and no `timeline-scope` the way the dot mark does. */
+      animation-timeline: scroll(self x), scroll(self x);
+    }
+  }
+}
+
+/* Both ramps are short and sit hard against the ends: the fade should appear the
+   moment the reader moves and disappear only once there is genuinely nothing left,
+   not drift across the whole gesture. */
+@keyframes nxShotFadeL {
+  0% {
+    --nx-shot-fade-l: 0px;
+  }
+  7%,
+  100% {
+    --nx-shot-fade-l: 26px;
+  }
+}
+
+@keyframes nxShotFadeR {
+  0%,
+  93% {
+    --nx-shot-fade-r: 26px;
+  }
+  100% {
+    --nx-shot-fade-r: 0px;
+  }
+}
+
+/*
+ * THE FOCUS TREATMENT.
+ *
+ * With a peek, two frames are on screen and neither is claiming to be the subject.
+ * Dimming and slightly shrinking the one that is only half there answers "which am I
+ * looking at" without a caption, and gives the rail a depth the flat filmstrip did
+ * not have.
+ *
+ * Each slide reads its OWN position through a view timeline, so this is one rule for
+ * three slides and no state anywhere.
+ *
+ * The plateau is 42-58% and centred on 50% because the slides are. A centred slide
+ * has travelled exactly half its view range — scrollport width plus its own width —
+ * at the moment it comes to rest, and that is true of all three now that the rail's
+ * padding lets the first and last reach a centred position too. It is a short band
+ * rather than a single point only so that the crossfade has somewhere to happen: at
+ * rest the focused slide is at 50% and its neighbour is at about 6%, which is well
+ * clear of the ramp.
+ */
+@supports (animation-timeline: view(x)) {
+  @media (max-width: 700px) {
+    .shotSlide {
+      animation: nxShotFocus linear both;
+      animation-timeline: view(x);
+    }
+  }
+}
+
+@keyframes nxShotFocus {
+  0%,
+  26% {
+    opacity: 0.42;
+    transform: scale(0.96);
+  }
+  42%,
+  58% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  74%,
+  100% {
+    opacity: 0.42;
+    transform: scale(0.96);
+  }
+}
+
+/*
+ * Under reduce, the dimming stays and the scale goes.
+ *
+ * The same distinction the dot mark is kept for: opacity here tracks the finger
+ * one-to-one and stops when the finger stops, which is position feedback rather than
+ * animation. A frame that changes SIZE as it travels is motion by any reading, and it
+ * is the half a reader who asked for less of it would object to.
+ */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes nxShotFocus {
+    0%,
+    26% {
+      opacity: 0.42;
+    }
+    42%,
+    58% {
+      opacity: 1;
+    }
+    74%,
+    100% {
+      opacity: 0.42;
+    }
+  }
+}
+
+/* Motion the reader did not ask for: a programmatic scroll of this rail animates
+   under the default and jumps under reduce, same as `.railTrack`. */
+@media (prefers-reduced-motion: reduce) {
+  .shots {
+    scroll-behavior: auto;
+  }
+}
+
+.shotDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--nx-l3);
+}
+
+/*
+ * The position mark.
+ *
+ * One element for the whole strip, driven by the rail's own scroll offset rather
+ * than by state — the same trick as `.railMark`, minus the component that has to
+ * measure anything. `timeline-scope` is what lets a sibling of the scroller read the
+ * scroller's timeline; without it the name is only visible to descendants.
+ *
+ * It is opacity 0 until `@supports` says the timeline exists, so a browser without
+ * scroll-driven animations gets three plain dots that still say "three slides"
+ * instead of a mark parked permanently on the last one — which is what an animation
+ * with no timeline and no duration would render.
+ *
+ * Kept under reduced motion on purpose: this tracks the finger one-to-one and stops
+ * when the finger stops. It is position feedback, not animation.
+ */
+.shotDotMark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--nx-hi);
+  opacity: 0;
+}
+
+@supports (animation-timeline: scroll()) and (timeline-scope: --nx-shots) {
+  @media (max-width: 700px) {
+    .shotCarousel {
+      timeline-scope: --nx-shots;
+    }
+
+    .shots {
+      scroll-timeline: --nx-shots x;
+    }
+
+    .shotDotMark {
+      opacity: 1;
+      animation: nxShotMark linear both;
+      animation-timeline: --nx-shots;
+    }
+  }
+}
+
+/* 6px dot plus a 5px gap is an 11px step, and the mark crosses two of them. */
+@keyframes nxShotMark {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(22px);
+  }
+}
+
+/* ======================= the segmented group switch ======================= */
+
+/*
+ * One group at a time, at phone width, with no client component.
+ *
+ * THE PROBLEM IT SOLVES. Two sections on this page are matrices: sixteen capability
+ * cells and four configuration groups of four. A matrix is a lookup surface — a
+ * reader scans columns and stops at the one they came for — and a matrix collapsed
+ * into one column is not a lookup surface, it is a list of sixteen paragraphs that
+ * must all be read to find the one that matters. At 390 those two sections were 2.7
+ * viewport-heights each and neither of them is a section anyone reads end to end.
+ *
+ * WHY RADIOS. The state is "which of four", the browser has had a control for that
+ * since 1995, and it comes with keyboard support, an accessible name per option and
+ * a group relationship for free. The alternative is `useState`, which would make two
+ * server components client components to move a class name around.
+ *
+ * WHY `:has()` AND NOT THE OLD SIBLING TRICK. The classic CSS tab pattern needs the
+ * inputs to be siblings of the panels, which forces the markup into an order chosen
+ * by the stylesheet. `:has()` lets the radio stay inside the label it belongs to and
+ * the panels stay where the section wants them. The degradation is also the right way
+ * round: a browser without `:has()` matches none of these rules and gets the full
+ * list, which is exactly what shipped before this existed.
+ *
+ * AGAINST THIS FILE'S SELECTOR DISCIPLINE, deliberately, and for the same reason the
+ * focus-ring rule is: a state selector cannot be a single class, because the state
+ * lives on one element and the thing it governs lives on another. Every chain below
+ * is anchored on `.seg` so it cannot reach outside one section.
+ */
+.seg {
+  min-width: 0;
+}
+
+/* Desktop shows the whole matrix, so there is nothing to switch between. */
+.segTabs {
+  display: none;
+}
+
+.segTab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 38px — TAP_CONTROL, the segmented tier of the tap scale. Not 44: this is a strip
+     of equal siblings, not a nav. */
+  min-height: 38px;
+  padding: 0 6px;
+  min-width: 0;
+  background: var(--nx-panel);
+}
+
+/*
+ * The input IS the hit area — inset over the whole tab rather than hidden in a
+ * corner. A visually-hidden 1px radio beside a 38px label is a control the tap-target
+ * audit measures at 1px, and it would be right to: that is the box the pointer has to
+ * find on a browser that ignores the label association.
+ */
+.segInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  /* `appearance: none` and no paint of its own, rather than `opacity: 0`. A
+     transparent element paints a transparent OUTLINE, so the opacity version is a
+     control with no visible focus ring — which is how this was written first and
+     what the keyboard pass caught. */
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+/*
+ * The focus ring, turned inward.
+ *
+ * The page draws a 2px ring at a 2px OUTSET offset, and this is the one control on
+ * the page whose container clips to a radius — so the outset ring is a ring the
+ * keyboard user never sees. Same ring, same width, drawn inside the tab instead.
+ */
+.segInput:focus-visible {
+  outline-offset: -3px;
+}
+
+.segLabel {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  /* DIM, the ink this page puts on every other inactive label. This was a
+     `color-mix` of 58% of the text colour against transparency — a value picked to
+     land where DIM lands, back when the muted greys were not on the page root. They
+     are now (`landingVars`), so say the thing rather than approximate it: a mix
+     against transparency also inherits whatever surface is behind it, and a tenant
+     re-skinning the greys could not reach a percentage of a different token. */
+  color: var(--nx-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* The label must never swallow the press — the input beneath it is the control. */
+  pointer-events: none;
+}
+
+.segInput:checked + .segLabel {
+  color: var(--nx-txt);
+}
+
+.segTab:has(.segInput:checked) {
+  background: var(--nx-l1);
+  /* The accent goes on the edge the panel is on, so the selected tab and the panel
+     beneath it read as one shape. */
+  box-shadow: inset 0 -1.5px 0 var(--nx-hi);
+}
+
+@media (max-width: 639px) {
+  .segTabs {
+    display: grid;
+    grid-auto-flow: column;
+    /* Equal tracks with a zero floor: four labels of different lengths must not size
+       the strip, or `API contract` decides how wide `Money` is. */
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 1px;
+    background: var(--nx-l2);
+    border: 1px solid var(--nx-l2);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+
+  /*
+   * The switch itself. Written as "hide the three that are not selected" rather than
+   * "hide all four and reveal one", because the second form has to restore a display
+   * value it does not know — the capability cells are grids and the configuration
+   * groups are blocks. This form never names a display value except `none`.
+   */
+  /* The selected tab is the panel's heading now, so the panel's own heading is a
+     label printed twice, 12px apart. */
+  .segPanelTitle {
+    display: none;
+  }
+
+  .seg:has(.segTab:nth-child(1) .segInput:checked) .segG2,
+  .seg:has(.segTab:nth-child(1) .segInput:checked) .segG3,
+  .seg:has(.segTab:nth-child(1) .segInput:checked) .segG4,
+  .seg:has(.segTab:nth-child(2) .segInput:checked) .segG1,
+  .seg:has(.segTab:nth-child(2) .segInput:checked) .segG3,
+  .seg:has(.segTab:nth-child(2) .segInput:checked) .segG4,
+  .seg:has(.segTab:nth-child(3) .segInput:checked) .segG1,
+  .seg:has(.segTab:nth-child(3) .segInput:checked) .segG2,
+  .seg:has(.segTab:nth-child(3) .segInput:checked) .segG4,
+  .seg:has(.segTab:nth-child(4) .segInput:checked) .segG1,
+  .seg:has(.segTab:nth-child(4) .segInput:checked) .segG2,
+  .seg:has(.segTab:nth-child(4) .segInput:checked) .segG3 {
+    display: none;
+  }
+}
+
+/*
+ * The capability cell.
+ *
+ * THE LAYOUT IS HERE AND NOT IN THE CELL'S `style` PROP, which is the whole reason
+ * this class still exists after the wrapper element it used to name was deleted. The
+ * cell is a column so that `margin-top: auto` can pin the link rule to its foot; an
+ * inline `display: flex` would say the same thing, and would then outrank the switch's
+ * `display: none` above — inline styles beat every class rule — leaving all four
+ * groups on screen at phone width. As a class it loses that fight on specificity,
+ * which is exactly what it should do.
+ */
+.capCell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}

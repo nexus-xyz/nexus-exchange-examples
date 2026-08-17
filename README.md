@@ -50,7 +50,9 @@ Examples are grouped by **track** — what the app is built on.
 Apps that talk to the API without an SDK, for readers working in a language we
 don't ship a client for.
 
-_None yet._
+| Example | What it shows |
+| --- | --- |
+| [`exchange-platform-demo/`](./exchange-api/exchange-platform-demo) | A complete white-label perpetuals venue frontend — landing page, terminal, and operator console — built on a mock mirror of the API contract (OpenAPI 0.7.0-pinned), so swapping to live is a base-URL change. |
 
 ### Track 2 — one whole app per SDK
 

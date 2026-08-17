@@ -1,0 +1,33 @@
+/node_modules
+/.next
+/.next-audit
+# Per-tenant dev builds: two venues on two ports need two dist dirs, or they
+# clobber each other's client manifest and both 500.
+/.next-nexus
+/.next-acme
+# The dist dir used for one-off production builds (bundle-size measurement, deploy
+# staging). 229 files of it were committed once because this line was not here.
+/.next-build
+# Transpiled model layer for audit/scripts/model.mjs — regenerated every run.
+/.audit-model
+/out
+/build
+.DS_Store
+*.pem
+.env*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# Audit output. The run directory is bulky and per-machine; the readable reports
+# (audit/reports/*.md) are committed because they are the artifact a person
+# reads, while the JSON beside them is the machine's intermediate.
+/audit/runs
+/audit/reports/*.json
+/audit/reports/*.partial.md
+
+# Full-resolution visual baselines — the LOCAL forensic layer for audit:visual.
+# The committed gate is audit/fingerprints/. See audit/scripts/visual.mjs for why
+# these are not committed: 38MB per acceptance, kept forever by git, on a project
+# whose baselines are re-accepted every time the design moves.
+/audit/baseline-shots

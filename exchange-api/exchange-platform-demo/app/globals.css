@@ -1,0 +1,965 @@
+/*
+ * Global CSS is kept deliberately thin. Everything expressible as a style object
+ * lives in lib/theme.ts; this file holds only what inline styles cannot say:
+ * the reset, keyframes, :hover / :focus affordances, and native control resets.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #000;
+}
+
+body {
+  color: #f3f3f3;
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: rgba(14, 203, 129, 0.24);
+  color: #fff;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* ---------------- scrollbars ----------------
+   The terminal has many independently scrolling panes, so the bars must read as
+   chrome rather than as content. */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: #000;
+}
+::-webkit-scrollbar-thumb {
+  background: #1c1c1c;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a2a2a;
+}
+
+/* ---------------- keyframes ---------------- */
+@keyframes nxpulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+/* Marquee for the top-bar market ticker. The track is the market list duplicated,
+   so -50% lands exactly on the seam. */
+@keyframes nxticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes nxblink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+/*
+ * Tick flashes.
+ *
+ * These keyframes existed from the start and were applied to nothing. They now sit
+ * behind `useFlash`. Two details that matter more than the colour:
+ *
+ *   • They fade OUT rather than in. A flash that ramps up is a notification; one
+ *     that decays is a trace of something that already happened, which is what a
+ *     price tick is.
+ *   • `ease-out` over 0.5s, not linear. Linear reads mechanical at this duration and
+ *     the tail is what the eye actually catches.
+ */
+@keyframes nxflash-up {
+  from {
+    background: rgba(14, 203, 129, 0.26);
+  }
+  to {
+    background: transparent;
+  }
+}
+@keyframes nxflash-down {
+  from {
+    background: rgba(246, 70, 93, 0.26);
+  }
+  to {
+    background: transparent;
+  }
+}
+.nx-flash-up {
+  animation: nxflash-up 0.5s ease-out;
+}
+.nx-flash-down {
+  animation: nxflash-down 0.5s ease-out;
+}
+/* The flash paints behind the glyphs, and a rounded box under a bare number reads as
+   a chip. Keep the corner tight and let the padding do the separating. */
+.nx-flash-up,
+.nx-flash-down {
+  border-radius: 3px;
+}
+
+/*
+ * The market-selector sheet.
+ *
+ * Keyframes rather than a transition driven by a state flip. The state-flip version
+ * measured a ~180ms stall before the slide started: the click renders a 32-row list
+ * first, and the rAF that was supposed to flip the transform lands behind that work,
+ * so the sheet sat off-screen for three frames and then moved. An animation attached
+ * on mount starts when the element first paints and needs no second render.
+ *
+ * `translate3d` rather than `translateY` — it keeps the sheet on its own layer for the
+ * whole run, which is where the jank in a 32-row list sliding upward lives.
+ */
+@keyframes nx-sheet-in {
+  from {
+    transform: translate3d(0, 100%, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes nx-sheet-out {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 100%, 0);
+  }
+}
+@keyframes nx-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes nx-scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Decelerating on the way in, accelerating on the way out — the standard asymmetry.
+   Arriving should settle; leaving should get out of the way. */
+.nx-sheet {
+  animation: nx-sheet-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform;
+}
+.nx-sheet-exit {
+  animation: nx-sheet-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  will-change: transform;
+}
+.nx-scrim {
+  animation: nx-scrim-in 200ms ease-out both;
+}
+.nx-scrim-exit {
+  animation: nx-scrim-out 180ms ease-in both;
+}
+
+
+/*
+ * ─────────────────────────── PANEL SWAPS ───────────────────────────
+ *
+ * Chart → Order book → Trades, Price → Funding → Depth, one blotter tab to the
+ * next: the strip above the content already crossfades its label and slides its
+ * underline (see primitives.tsx Tabs), and then the content it controls replaced
+ * itself between two frames. Half a control moving is worse than none moving —
+ * the eye follows the underline, arrives, and finds the panel already changed,
+ * which reads as a page load rather than a switch.
+ *
+ * 130ms and 4px. Deliberately shorter and shallower than the sheet: a sheet is a
+ * new surface arriving from off-screen, a pane swap is the same surface showing
+ * something else, and animating it like an arrival makes the app feel slow. Long
+ * enough to be followed, short enough that a trader flipping book→trades→book
+ * never waits on it.
+ *
+ * Keyed on the active id by the caller, so React remounts and the animation
+ * replays — the same mechanism the book flash and useFlash use, and for the same
+ * reason: re-applying a class to a live element does not restart it.
+ */
+@keyframes nx-swap-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+.nx-swap {
+  animation: nx-swap-in 130ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/*
+ * ─────────────────────────── CENTRED DIALOGS ───────────────────────────
+ *
+ * Phone sheets slide, and desktop dialogs appeared between two frames with no
+ * transition at all — so the one surface that takes over the whole screen was the
+ * only one that arrived without saying where it came from. The market selector,
+ * the login modal, the fee schedules and Deposit all landed this way.
+ *
+ * Rising 6px and scaling from 0.985, not from 0.9: a dialog that zooms is a
+ * notification. This one is already where it belongs and is only settling into
+ * focus, which is what a centred modal over a dimmed app actually is.
+ */
+@keyframes nx-dialog-in {
+  from {
+    opacity: 0;
+    transform: translate3d(-50%, calc(-50% + 6px), 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(-50%, -50%, 0) scale(1);
+  }
+}
+.nx-dialog {
+  animation: nx-dialog-in 170ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/*
+ * ─────────────────────────── PRESS, FINE POINTERS ───────────────────────────
+ *
+ * A coarse-pointer press treatment already exists further down this file, and it is
+ * `@media (pointer: coarse)` only — so a mouse got hover and nothing else. Click a
+ * tab, a segmented control or a nav item with a trackpad and the only confirmation
+ * was the result arriving.
+ *
+ * OPACITY, not transform, and the reason is written on the coarse-pointer rule: a
+ * transform creates a containing block for fixed-position descendants, which would
+ * break every overflow menu the moment one was opened from a pressed control. I
+ * reached for `scale(0.97)` first; the note that stopped me was already here, which
+ * is the argument for writing them down.
+ *
+ * Held slightly lighter than the touch value — a mouse press is precise and brief,
+ * a thumb press is neither.
+ */
+@media (hover: hover) and (pointer: fine) {
+  button:active:not(:disabled),
+  a:active,
+  [role="tab"]:active,
+  [role="option"]:active {
+    opacity: 0.74;
+  }
+}
+
+/*
+ * ORDER BOOK — the match flash.
+ *
+ * Two layers on a level, and they say different things. The depth bar is a STATE: how
+ * much is resting here, always on, always dim. The flash is an EVENT: this level just
+ * changed, and it is gone within a second.
+ *
+ * The reference shows the same pair, and the flash is the reason its book reads as
+ * live rather than as a table that repaints. Ours could not show it until the book
+ * stopped rewriting all thirteen levels every tick — a flash on everything is a
+ * repaint, not a signal.
+ *
+ * Fading OUT, not in: an event that has already happened should decay. Ramping up
+ * would read as something about to happen. The outline goes with it, because a border
+ * that lingers after the fill has faded reads as a selection.
+ */
+@keyframes nx-book-flash-bid {
+  from {
+    background: rgba(14, 203, 129, 0.3);
+    border-color: rgba(14, 203, 129, 0.55);
+  }
+  to {
+    background: rgba(14, 203, 129, 0);
+    border-color: rgba(14, 203, 129, 0);
+  }
+}
+@keyframes nx-book-flash-ask {
+  from {
+    background: rgba(246, 70, 93, 0.3);
+    border-color: rgba(246, 70, 93, 0.55);
+  }
+  to {
+    background: rgba(246, 70, 93, 0);
+    border-color: rgba(246, 70, 93, 0);
+  }
+}
+.nx-book-flash {
+  position: absolute;
+  inset: 1px 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.nx-book-flash-bid {
+  animation: nx-book-flash-bid 620ms ease-out both;
+}
+.nx-book-flash-ask {
+  animation: nx-book-flash-ask 620ms ease-out both;
+}
+
+/*
+ * A quote update is not a match, and should not look like one.
+ *
+ * Same keyframes at a third of the opacity and half the duration: present enough that
+ * you can see the book is live, quiet enough that a real sweep still reads as an
+ * event. Without the split every change shouted equally, which is the same failure as
+ * flashing all thirteen levels — a signal that fires on everything carries nothing.
+ */
+.nx-book-flash-quote {
+  opacity: 0.34;
+  animation-duration: 320ms;
+}
+
+/*
+ * The nav drawer slides in from the left edge it belongs to, and back out to it.
+ *
+ * It used to have no exit at all, and the comment here claimed that was deliberate —
+ * "a drawer that lingers on the way out reads as unresponsive". That was a
+ * rationalisation of a missing animation. What actually happened is worse than
+ * lingering: the drawer vanished in a single frame while its scrim kept fading for
+ * another 180ms, so the panel disappeared and its shadow stayed behind. The two
+ * halves of one dismissal came apart.
+ *
+ * Same asymmetry as the sheets — decelerating in over 240ms, accelerating out over
+ * 190. Out is shorter than in on purpose: arriving should settle, leaving should get
+ * out of the way.
+ */
+@keyframes nx-drawer-in {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes nx-drawer-out {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+.nx-drawer {
+  animation: nx-drawer-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform;
+}
+.nx-drawer-exit {
+  animation: nx-drawer-out 190ms cubic-bezier(0.4, 0, 1, 1) both;
+  will-change: transform;
+}
+
+/* ---------------- hover affordances ---------------- */
+.nx-row {
+  transition: background 0.12s;
+}
+.nx-row:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+.nx-hover-text {
+  transition: color 0.15s;
+}
+.nx-hover-text:hover {
+  color: #f3f3f3 !important;
+}
+.nx-hover-border {
+  transition: border-color 0.15s;
+}
+.nx-hover-border:hover {
+  border-color: #3a3a3a !important;
+}
+
+/* ---------------- the market trigger ----------------
+   The plate under the symbol is the affordance — a raised surface in a flat bar
+   reads as something you press, which is how the reference says it and why nobody
+   was clicking ours. Hover lifts the plate and brightens the caret together, so the
+   whole control answers as one thing rather than as a caret that happens to be
+   nearby. Kept in CSS rather than React state: a hover that lives in `useState`
+   re-renders the header on every mouse move across it. */
+.nx-market-trigger:hover .nx-market-chip {
+  background: #1b1b1b;
+  border-color: #2a2a2a;
+}
+.nx-market-trigger:hover .nx-market-caret {
+  stroke: #9a9a9a;
+}
+/* A phone has no hover, so the plate would be permanently unlifted and the caret
+   permanently dim. There the caret is 22px and carries it alone. */
+@media (hover: none) {
+  .nx-market-trigger:hover .nx-market-chip {
+    background: inherit;
+    border-color: inherit;
+  }
+}
+
+/* ---------------- native controls ----------------
+   Number inputs: the spinner arrows break the mono column grid, and the ticket
+   provides its own stepping (the %-of-buying-power row). */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+input::placeholder {
+  color: #4a4a4a;
+}
+
+/* Leverage slider — a 3px rail with a square handle, matching the panel
+   detailing rather than the OS. */
+.nx-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  background: transparent;
+  cursor: pointer;
+}
+.nx-range::-webkit-slider-runnable-track {
+  height: 3px;
+  background: #1c1c1c;
+  border-radius: 2px;
+}
+.nx-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border-radius: 2px;
+  background: #0ecb81;
+  box-shadow: 0 0 8px rgba(14, 203, 129, 0.5);
+}
+.nx-range::-moz-range-track {
+  height: 3px;
+  background: #1c1c1c;
+  border-radius: 2px;
+}
+.nx-range::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: none;
+  border-radius: 2px;
+  background: #0ecb81;
+}
+
+/* ---------------- accessibility ---------------- */
+:focus-visible {
+  outline: 1px solid rgba(14, 203, 129, 0.7);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/*
+ * Row actions on a phone.
+ *
+ * The blotter is inline on the mobile trade screen now, which brought its row
+ * controls onto a touch surface for the first time. At desktop these are ~18px and
+ * correctly so; at 640px and below two of them share a top edge in every Positions
+ * row, which the tap-target floor grades as a segmented group needing 36px.
+ */
+/* 1023, not 640: the tap-target floor is enforced at mobile AND tablet, and tablet
+   is 834 wide. A 640 breakpoint left every one of these under-tier on a tablet. */
+@media (max-width: 1023px) {
+  .nx-rowaction {
+    /* 38, not 36: at exactly the tier minimum sub-pixel rounding lands some of these
+       on 35.5 and the floor grades them as offenders. Two pixels of headroom. */
+    min-height: 38px;
+    /* min-width, not padding: these buttons set `padding` inline as a shorthand, and
+       an inline shorthand beats a stylesheet longhand — so padding-left/right here
+       did nothing and the bare glyph action stayed 19.7px wide against a 24 floor. */
+    min-width: 32px;
+  }
+}
+
+/* Blotter sub-tabs (TWAP views, Account Activity views). 28px is deliberate at
+   desktop — it is what keeps the second level from pushing the empty state under
+   the status bar, which is the reference's own bug. On a phone it is under-tier. */
+@media (max-width: 1023px) {
+  .nx-subtab {
+    min-height: 36px;
+    /* Height was the obvious half. "ALL" is three narrow glyphs and came out 20.8px
+       wide against the segmented tier's 24 — a target can be under-tier on either
+       axis, and only one of them is visible in a screenshot. */
+    min-width: 24px;
+  }
+}
+
+/* ---------------- touch ---------------- */
+
+/*
+ * Pressed feedback.
+ *
+ * Seven components set `-webkit-tap-highlight-color: transparent` and nothing
+ * replaced it, so on a phone every button — including BUY — acknowledged a tap only
+ * once its own state changed. Removing the platform's feedback without providing
+ * any is worse than leaving the grey box.
+ *
+ * `opacity`, deliberately, not `transform` or `filter`: those two create a
+ * containing block for fixed-position descendants, which would break the overflow
+ * menus the moment one was opened from a pressed control.
+ */
+@media (pointer: coarse) {
+  button:active,
+  a:active,
+  [role="tab"]:active,
+  [role="checkbox"]:active,
+  [role="menuitem"]:active {
+    opacity: 0.62;
+  }
+}
+
+/*
+ * iOS Safari zooms the page when a font-size under 16px takes focus. Every field in
+ * the ticket is 13px, so tapping Amount magnified the entire terminal and left the
+ * trader pinching back out mid-order. 16px on coarse pointers only — the desktop
+ * grid keeps its density.
+ */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/*
+ * Rubber-band containment. Without this, flicking the blotter or the book past its
+ * end scrolls the shell behind it — on iOS the whole page peels away from the status
+ * bar, which on a fixed-layout terminal looks like a rendering fault.
+ */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/*
+ * Inline controls that are text, not boxes — the Portfolio header's `Accounts ▾`
+ * pickers and its `View Volume` / `View Fee Schedule` links.
+ *
+ * They are 14–15px tall because they are set at the size of the text they sit in,
+ * which is right with a mouse and under-tier the moment the page is touched. Same
+ * 1023 breakpoint as the row actions: the floor grades tablet too.
+ */
+@media (max-width: 1023px) {
+  .nx-inline-control {
+    min-height: 36px;
+  }
+}
+
+/*
+ * The `Segmented` primitive — timeframes, book grouping, the season picker.
+ *
+ * Its height is here rather than inline for one reason: an inline `minHeight` wins
+ * over every class rule, so a component that sets its own height inline can never be
+ * raised by a media query. The first attempt at this fix set `className` and left the
+ * inline value in place, and the buttons stayed 32px against a 36px tier.
+ *
+ * 32 is the default-tier floor and is right with a mouse; the segmented tier is 36
+ * once the pointer is a finger, and the 1023px breakpoint keeps tablet in scope.
+ */
+.nx-segmented {
+  min-height: 32px;
+}
+
+@media (max-width: 1023px) {
+  .nx-segmented {
+    min-height: 36px;
+  }
+}
+
+/*
+ * The order ticket's submit control.
+ *
+ * 40px at desktop, which is the reference's own figure. 44 on a touch surface: the
+ * submit tier's floor, and the one control where the touch floor outranks parity —
+ * this is the irreversible action on the screen.
+ */
+/*
+ * The order ticket on a touch surface.
+ *
+ * Scoped to ≤1023px so the desktop ticket keeps the reference's exact metrics — the
+ * parity that was measured was measured with a mouse. On a phone the tiers apply:
+ * 36px for the segmented pairs (Long/Short, market/limit, Cross/Iso) and the fields,
+ * 44 for the submit. `min-height` clamps a smaller inline `height`, so this reaches
+ * controls that set their own.
+ */
+@media (max-width: 1023px) {
+  .nx-ticket button,
+  .nx-ticket input,
+  .nx-ticket select {
+    min-height: 36px;
+  }
+  /* Written after, and one class deeper, because `.nx-ticket button` would otherwise
+     out-specify `.nx-submit` and pull the submit control back down to 36. */
+  .nx-ticket .nx-submit {
+    min-height: 44px;
+  }
+}
+
+.nx-submit {
+  min-height: 40px;
+}
+
+@media (max-width: 1023px) {
+  .nx-submit {
+    min-height: 44px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   CONSOLE (/admin)
+
+   The console is styled with inline styles like the rest of the app, and inline
+   styles cannot express a pseudo-class. Hover, focus and active states are the
+   difference between a screenshot and a product, so the handful that matter
+   live here as classes the console components opt into.
+
+   Kept deliberately small: these are STATES for existing surfaces, not a second
+   styling system. Anything with a resting appearance still belongs in the token
+   layer (lib/theme.ts).
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Table rows. A whole-row tint on hover makes a wide row scannable across its
+   full width, which is the actual problem with a 9-column table. Applied as a
+   descendant rule rather than a class on every <tr>, so no page has to remember
+   to opt in — and so the header row, which is not hoverable, cannot get it. */
+.nx-console tbody tr {
+  transition: background-color 90ms ease;
+}
+.nx-console tbody tr:hover {
+  background: rgba(255, 255, 255, 0.022);
+}
+
+/* Sidebar destinations. The active row already carries a fill and a left rule;
+   this is only for the ones that do not. */
+.nx-nav {
+  transition: background-color 90ms ease, color 90ms ease;
+}
+.nx-nav:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #e6e6e6 !important;
+}
+
+/* Buttons and inputs, as descendant rules for the same reason as the rows:
+   the resting appearance is a shared style object, and requiring every call
+   site to also remember a class is how half of them end up without one. */
+.nx-console button,
+.nx-console input,
+.nx-console select {
+  transition: background-color 90ms ease, border-color 90ms ease;
+}
+.nx-console button:not([role="switch"]):hover {
+  border-color: #3a3a3a;
+  background: rgba(255, 255, 255, 0.04);
+}
+.nx-console input:hover,
+.nx-console select:hover {
+  border-color: #2a2a2a;
+}
+.nx-console input:focus,
+.nx-console select:focus {
+  border-color: #3d3d3d;
+  outline: none;
+}
+
+/* One visible focus ring for keyboard users across the whole console. Without
+   it the inline `outline: none` on inputs would leave keyboard navigation with
+   no indicator at all. */
+.nx-console a:focus-visible,
+.nx-console button:focus-visible,
+.nx-console input:focus-visible,
+.nx-console select:focus-visible,
+.nx-console [role="switch"]:focus-visible {
+  outline: 2px solid rgba(120, 190, 255, 0.55);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------------- sub-pane tab strips ----------------
+   The one thing components/admin/subpane.tsx cannot state inline: a scroll
+   container that hides its own scrollbar. Six two-word tabs is ~330px, which is
+   wider than a 375px phone has left inside a panel — and Panel clips its
+   overflow, so without this the last tab is both unreachable and invisible to a
+   document-level overflow check.
+
+   The bar is hidden rather than styled because it sits ON the control at 3px of
+   padding; a 15px scrollbar inside a 44px strip is a second horizontal rule
+   through the middle of it. The tabs are links, so the keyboard still reaches
+   every one of them and focus scrolls the strip for free. */
+.nx-subtabs {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.nx-subtabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* The console at narrow widths.
+   A 232px sticky sidebar beside content does not fit a phone. Below 860 the
+   shell stacks: the sidebar becomes a header, its nav becomes one horizontal
+   scroll strip, and the section headings and footer drop out — they are
+   orientation for a wide layout and clutter in a narrow one.
+
+   DENSITY. Stacked, the four blocks of the sidebar cost a phone ~190px before
+   any content: a wordmark block, an ENVIRONMENT label, the switcher, a
+   paragraph about testnet, then the nav. That is half a viewport spent saying
+   things that do not change. So at this width the head and the switcher share
+   one row — they are both identity, and neither needs a full line — and the
+   reassuring half of the environment prose goes. The warning half does not: see
+   the data-env rule below. */
+@media (max-width: 860px) {
+  .nx-console {
+    flex-direction: column;
+  }
+  .nx-console .nx-sidebar {
+    width: 100% !important;
+    height: auto !important;
+    position: static !important;
+    border-right: none !important;
+    border-bottom: 1px solid #1c1c1c;
+    /* Two columns for the identity row, then the nav strip across both. Grid
+       rather than flex-wrap so the switcher cannot be pushed onto its own line
+       by a long wordmark — it takes the slack column and shrinks. */
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+  .nx-console .nx-sidehead {
+    padding: 10px 12px !important;
+    border-bottom: none !important;
+  }
+  .nx-console .nx-envswitch {
+    padding: 8px 12px 8px 0 !important;
+    border-bottom: none !important;
+    justify-self: end;
+    /* The switcher is two 9px words; letting it take the whole slack column
+       stretches a segmented control into a banner. */
+    width: min(210px, 100%);
+  }
+  /* The label is redundant beside a TEST | LIVE pair — the control says what it
+     is — and on a phone it costs a whole line above the fold. */
+  .nx-console .nx-envlabel {
+    display: none !important;
+  }
+  /* On test the paragraph is reassurance and goes. On live it is the warning
+     about real funds, and a narrow viewport is not a reason to stop saying it —
+     the amber sidebar edge is a cue you learn, and this is the sentence that
+     teaches it. So live drops back to one column and pays the two lines: the
+     density saving is real, and it is not worth the one screen where it costs
+     an operator the sentence that says the money is real. */
+  .nx-console .nx-envnote {
+    display: none;
+  }
+  .nx-console .nx-sidebar[data-env="live"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .nx-console .nx-sidebar[data-env="live"] .nx-envswitch {
+    width: 100%;
+    justify-self: stretch;
+    padding: 0 12px 10px !important;
+  }
+  .nx-console .nx-sidebar[data-env="live"] .nx-envnote {
+    display: block;
+  }
+  .nx-console .nx-sidenav {
+    grid-column: 1 / -1;
+    flex-direction: row !important;
+    overflow-x: auto;
+    padding: 6px 8px !important;
+    border-top: 1px solid #161616;
+    -webkit-overflow-scrolling: touch;
+    /* Same reasoning as .nx-subtabs: the bar would sit inside a 44px nav row. */
+    scrollbar-width: none;
+    /* No gap between GROUPS — the 12px column gap inherited from the desktop
+       column became a hole in the strip, wider than the gap between the items
+       inside a group, and read as a break rather than a boundary. The 1px
+       separator below draws the boundary instead. */
+    gap: 0 !important;
+  }
+  .nx-console .nx-sidenav::-webkit-scrollbar {
+    display: none;
+  }
+  .nx-console .nx-navgroup {
+    flex-direction: row !important;
+    gap: 4px !important;
+  }
+  .nx-console .nx-navgroup + .nx-navgroup {
+    margin-left: 9px;
+    padding-left: 9px;
+    border-left: 1px solid #1c1c1c;
+  }
+  .nx-console .nx-navsection,
+  .nx-console .nx-sidefoot {
+    display: none !important;
+  }
+  .nx-console .nx-sidenav a {
+    white-space: nowrap;
+    /* Tighter than the desktop 9px: eight destinations in one strip, and the
+       row height (44px, stated inline) is what the thumb aims at, not the
+       padding. */
+    padding: 7px 10px !important;
+  }
+  /* The content column loses the desktop's 26px of top air — the nav strip
+     directly above it is already the separation. */
+  .nx-console > main {
+    padding-top: 16px !important;
+  }
+}
+
+/* Loading skeletons.
+   A pulse, not a sweep: a travelling highlight has to be sized to the element to
+   look right, and the console's skeletons range from a 9px label to a 150px
+   chart. Opacity is size-independent and cannot be wrong at either end. */
+@keyframes nx-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.nx-skeleton {
+  animation: nx-skeleton-pulse 1.35s ease-in-out infinite;
+}
+/* A loading state is the last place to ignore this — the animation is decorative
+   and the layout does the actual communicating. */
+@media (prefers-reduced-motion: reduce) {
+  .nx-skeleton {
+    animation: none;
+  }
+}
+
+/* Sortable column headers. The header is a real <button> so it is reachable by
+   keyboard and announced as pressable; this only gives it the hover the rest of
+   the console's controls already have. The `:not` guard keeps the shared button
+   hover rule above from painting a border around a bare table header. */
+.nx-console thead button:hover {
+  color: #e6e6e6;
+}
+.nx-console thead button:hover,
+.nx-console thead button {
+  border-color: transparent !important;
+  background: none !important;
+}
+
+/* A row that opens a detail page. The affordance is the whole row's cursor, not
+   just the link text — the target is the row and pointing at it should say so. */
+.nx-console tbody tr:has(a[href^="/admin/markets/"]) {
+  cursor: pointer;
+}
+
+/* ---------------- divided metric rows ----------------
+   `MetricGrid divided` separates figures with a 1px rule instead of 90px of air,
+   which is what makes a six-up row read as one instrument rather than six. The rule
+   is drawn inline on every tile but the first (see parts.tsx for why the column
+   count is fixed rather than auto-fit).
+
+   Below 1120 the row stops being a row: a fixed six-column grid at that width gives
+   each figure under 150px, and a 22px tabular number does not fit. Two columns, then
+   one, and the rules go with the layout — a left rule on a stacked list is a rule
+   with nothing on the other side of it. Padding-right goes too, or the last column
+   sits 15px short of the panel edge with nothing to balance it.
+
+   The rule's COLOUR stays inline in parts.tsx, because the line tokens are
+   tenant-owned and a hex in this file would not re-skin. This file only takes the
+   rule away, which needs no colour. */
+@media (max-width: 1120px) {
+  .nx-console .nx-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: 18px;
+  }
+  .nx-console .nx-metrics > * {
+    padding-right: 0 !important;
+  }
+  .nx-console .nx-metric-divided {
+    border-left: none !important;
+    padding-left: 0 !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .nx-console .nx-metrics {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* The checklist's disclosure. Safari still paints a default triangle unless the
+   webkit pseudo-element is cleared as well as `list-style`, and a stray marker
+   beside a progress bar reads as a bullet rather than a control. */
+.nx-summary::-webkit-details-marker {
+  display: none;
+}
+.nx-summary::marker {
+  content: "";
+}
+.nx-console details[open] .nx-summary {
+  margin-bottom: 2px;
+}
+
+
+/*
+ * Smooth scrolling for in-page links, on the landing page only.
+ *
+ * IT LIVES HERE BECAUSE IT HAS TO. `scroll-behavior` belongs on the scrolling
+ * element, which is the document — and a CSS module cannot style `html`, because
+ * every selector in a module must carry a local class. So the rule is global and the
+ * SCOPE is the attribute: `app/page.tsx` marks its own root, and nothing else on
+ * this origin does.
+ *
+ * That scope is the point. This stylesheet is shared with the terminal, and a
+ * trading screen has no business animating a jump — the same reason SubNav opts into
+ * smooth scrolling inside its own click handler rather than turning it on globally.
+ *
+ * WHY NOT A CLICK HANDLER HERE TOO. It would mean making Nav a client component, and
+ * then Footer, and then the hero buttons, each carrying the same six lines. One rule
+ * covers every internal link on the page, including the ones nobody has written yet.
+ *
+ * Where `:has()` is unsupported the links simply jump, which is the behaviour this
+ * replaces — a graceful floor rather than a broken one.
+ */
+html:has([data-landing]) {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:has([data-landing]) {
+    scroll-behavior: auto;
+  }
+}
