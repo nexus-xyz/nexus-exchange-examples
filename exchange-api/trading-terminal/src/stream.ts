@@ -31,6 +31,16 @@
 //     that will never deliver again. A liveness watchdog treats a long silence
 //     as a death and forces the reconnect that the socket declined to trigger.
 //
+//   * **Redelivery across a reconnect.** A resubscribe is a *join*, and a join
+//     can hand back frames that were already delivered on the previous
+//     connection — either because we asked for a replay with `since`, or
+//     because the server chose to backfill from its own buffer. An event
+//     stream is not idempotent at the consumer: rendering the same `fills`
+//     frame twice is a fill that never happened. So the sequence gate below
+//     drops any frame that does not advance its channel, and it lives *here*
+//     rather than in each consumer — a fifth channel added by a reader is
+//     protected without having to know that it needed to be.
+//
 // Reconnects use exponential backoff with equal jitter, and give up after a
 // bounded number of consecutive failures rather than spinning forever against
 // an endpoint that is not there — `index.ts` then falls back to REST polling.
@@ -46,7 +56,13 @@ export interface Subscription {
 export type StreamEvent =
   | { readonly type: "open" }
   | { readonly type: "closed"; readonly reason: string }
-  | { readonly type: "subscribed"; readonly channel: string; readonly seq: bigint }
+  | {
+      readonly type: "subscribed";
+      readonly channel: string;
+      readonly market: string | undefined;
+      /** `seq_at_join`, or `null` when the server did not send one. */
+      readonly seq: bigint | null;
+    }
   | {
       readonly type: "event";
       readonly channel: string;
@@ -60,6 +76,35 @@ export type StreamEvent =
 
 /** Silence longer than this means the socket is dead, whatever it claims. */
 const LIVENESS_TIMEOUT_MS = 45_000;
+
+/**
+ * How long a connection must survive before it counts as having worked.
+ *
+ * Resetting the failure count the moment a socket opens looks right and is not:
+ * a server that completes the upgrade and then drops the connection — a token
+ * the socket layer accepted and the application layer refused, say — would
+ * reset the backoff on every attempt, turning the reconnect loop into a hot
+ * loop that never escalates and never gives up. Only a connection that stayed
+ * up counts.
+ */
+const MIN_STABLE_CONNECTION_MS = 30_000;
+
+/**
+ * Consecutive suppressed frames on a channel before the gate assumes it is
+ * wrong rather than the server.
+ *
+ * The gate never lowers its high-water mark, which is what makes it a reliable
+ * duplicate filter — but it also means that if a server ever restarts its
+ * sequence numbering, every subsequent frame would score as a duplicate and the
+ * channel would go silent *while still receiving traffic*: the liveness
+ * watchdog counts frames arriving, not frames delivered, so nothing else here
+ * would notice. So a long run of suppressions is treated as evidence that the
+ * numbering changed underneath us — the gate resets and signals a gap, which
+ * puts the consumer back on a REST snapshot. A handful of redelivered frames
+ * after a reconnect is the common case and stays suppressed; a channel wedged
+ * forever is not a failure mode worth trading for it.
+ */
+const MAX_SUPPRESSED_FRAMES = 64;
 
 const BASE_RECONNECT_DELAY_MS = 500;
 const MAX_RECONNECT_DELAY_MS = 15_000;
@@ -85,6 +130,27 @@ export class MarketStream {
   private failures = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private livenessTimer: NodeJS.Timeout | null = null;
+  /** When the current socket opened, or 0. See `MIN_STABLE_CONNECTION_MS`. */
+  private openedAt = 0;
+  /**
+   * Subscriptions by channel, for routing.
+   *
+   * One subscription per channel is an invariant of this class, and the
+   * sequence gate is keyed on it: `seq` is monotonic per (channel, market), so
+   * two subscriptions to one channel on different markets would share a gate
+   * and starve each other. The constructor refuses that rather than letting it
+   * become a silent data-loss bug in whatever a reader builds next.
+   */
+  private readonly byChannel: Map<string, Subscription>;
+  /**
+   * Highest `seq` accepted per channel. A frame at or below it has been
+   * delivered before, and must not reach the consumer a second time.
+   */
+  private readonly seqFloor = new Map<string, bigint>();
+  /** The `since` cursor last sent for a channel, or `null` if none was. */
+  private readonly sentCursor = new Map<string, bigint | null>();
+  /** Consecutive frames dropped per channel. See `MAX_SUPPRESSED_FRAMES`. */
+  private readonly suppressed = new Map<string, number>();
 
   constructor(
     private readonly url: string,
@@ -94,7 +160,18 @@ export class MarketStream {
     private readonly cursorFor: (sub: Subscription) => bigint | null,
     private readonly emit: (event: StreamEvent) => void,
     private readonly shutdownSignal: AbortSignal,
-  ) {}
+  ) {
+    this.byChannel = new Map();
+    for (const sub of subscriptions) {
+      if (this.byChannel.has(sub.channel)) {
+        throw new Error(
+          `duplicate subscription to channel "${sub.channel}": this client ` +
+            "keeps one sequence cursor per channel, so two would collide",
+        );
+      }
+      this.byChannel.set(sub.channel, sub);
+    }
+  }
 
   start(): void {
     if (this.closed) return;
@@ -179,7 +256,7 @@ export class MarketStream {
     socket.onopen = () => {
       if (this.socket !== socket) return void safeClose(socket);
       if (this.closed) return void safeClose(socket);
-      this.failures = 0;
+      this.openedAt = Date.now();
       this.emit({ type: "open" });
       this.armLiveness();
       for (const sub of this.subscriptions) this.sendSubscribe(socket, sub);
@@ -217,6 +294,11 @@ export class MarketStream {
       this.socket = null;
       detach(socket);
       this.clearTimer("liveness");
+      // A connection that did real work earns a fresh backoff; one that died on
+      // arrival does not. See `MIN_STABLE_CONNECTION_MS`.
+      const uptime = this.openedAt === 0 ? 0 : Date.now() - this.openedAt;
+      this.openedAt = 0;
+      if (uptime >= MIN_STABLE_CONNECTION_MS) this.failures = 0;
       if (this.closed) return;
       const reason = event.reason || `code ${event.code}`;
       this.emit({ type: "closed", reason });
@@ -243,14 +325,68 @@ export class MarketStream {
     switch (op) {
       case "subscribed": {
         if (channel === null) return;
-        const seq = toSeq(message["seq_at_join"]) ?? 0n;
-        this.emit({ type: "subscribed", channel, seq });
+        const seqAtJoin = toSeq(message["seq_at_join"]);
+        // Where this join says the channel starts: the cursor we asked to
+        // resume from if we sent one, otherwise the server's live edge.
+        //
+        // It can only ever *raise* the gate. A rejoin that announces a point
+        // below what we have already delivered is the exact shape of the
+        // redelivery bug — a server backfilling from its own checkpoint, which
+        // is behind ours because nothing acknowledges frames — and honouring it
+        // would hand the consumer fills it has already seen. Recovery from a
+        // genuinely restarted numbering is handled by the suppression counter
+        // instead, where it does not cost duplicate suppression to have.
+        const proposed = this.sentCursor.get(channel) ?? seqAtJoin;
+        if (proposed !== null) {
+          const current = this.seqFloor.get(channel);
+          this.seqFloor.set(
+            channel,
+            current === undefined || proposed > current ? proposed : current,
+          );
+        }
+        this.emit({ type: "subscribed", channel, market, seq: seqAtJoin });
         return;
       }
       case "event": {
         if (channel === null) return;
         const seq = toSeq(message["seq"]);
         if (seq === null) return;
+        const sub = this.byChannel.get(channel);
+        // Not a channel we asked for. Nothing downstream has state for it.
+        if (sub === undefined) return;
+        // A market-scoped subscription must not be fed another market's frames:
+        // applying someone else's book to this one's state is wrong in a way
+        // that still looks like a working dashboard. A frame that names no
+        // market is the server declining to echo it, not a mismatch.
+        if (sub.market !== undefined && market !== undefined && market !== sub.market) {
+          return;
+        }
+        // The gate. A frame that does not advance the channel has been seen
+        // before — dropped silently, because redelivery is a normal thing for a
+        // resubscribe to do and logging it would be noise, not news.
+        const floor = this.seqFloor.get(channel);
+        if (floor !== undefined && seq <= floor) {
+          const dropped = (this.suppressed.get(channel) ?? 0) + 1;
+          if (dropped < MAX_SUPPRESSED_FRAMES) {
+            this.suppressed.set(channel, dropped);
+            return;
+          }
+          // Long past the point where this could be a reconnect's backfill.
+          // Assume the numbering, not the data, is what changed: reset the gate
+          // and tell the consumer its accumulated state is no longer trustworthy.
+          this.suppressed.delete(channel);
+          this.seqFloor.delete(channel);
+          this.emit({
+            type: "error",
+            message:
+              `${channel}: ${dropped} consecutive frames at or below seq ` +
+              `${floor} — the server's sequence numbering appears to have ` +
+              "restarted; resetting the duplicate filter",
+          });
+          this.emit({ type: "gap", channel, market });
+        }
+        this.suppressed.delete(channel);
+        this.seqFloor.set(channel, seq);
         this.emit({
           type: "event",
           channel,
@@ -291,9 +427,14 @@ export class MarketStream {
     // past the safe-integer range would be mangled by JSON, so it is simply not
     // sent and the stream resumes live — a small gap, correctly signalled,
     // beats a cursor the server reads as a different number.
-    if (cursor !== null && cursor > 0n && cursor <= BigInt(Number.MAX_SAFE_INTEGER)) {
-      frame["since"] = Number(cursor);
-    }
+    const sent =
+      cursor !== null && cursor > 0n && cursor <= BigInt(Number.MAX_SAFE_INTEGER)
+        ? cursor
+        : null;
+    if (sent !== null) frame["since"] = Number(sent);
+    // Remembered so `subscribed` can put the gate exactly where this asked to
+    // resume from, rather than inferring it from the server's live edge.
+    this.sentCursor.set(sub.channel, sent);
     try {
       socket.send(JSON.stringify(frame));
     } catch {

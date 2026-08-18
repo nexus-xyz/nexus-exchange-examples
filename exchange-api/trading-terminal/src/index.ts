@@ -283,9 +283,11 @@ async function main(): Promise<void> {
 
   const streamable = config.wsUrl !== null && rest.hasCredentials;
   if (streamable && config.wsUrl !== null) {
+    // Only channels something here consumes. A subscription whose frames are
+    // dropped on the floor costs bandwidth and, worse, reads as a feature —
+    // `trades` belongs here the moment there is a tape to print it to.
     const subscriptions: Subscription[] = [
       { channel: "book", market: config.market },
-      { channel: "trades", market: config.market },
       { channel: "fills" },
       { channel: "orders" },
     ];
@@ -430,12 +432,17 @@ async function main(): Promise<void> {
   });
 }
 
+// `fills` and `orders` are account-wide channels — they are subscribed without
+// a market, so a line from a market this app never touched can legitimately
+// appear. Naming the market is what keeps that from reading as this app's own
+// order filling.
 function renderFill(payload: unknown): void {
   if (payload === null || typeof payload !== "object") return;
   const fill = payload as Record<string, unknown>;
   log(
-    `FILL ${String(fill["side"] ?? "?")} ${String(fill["size"] ?? "?")} @ ` +
-      `${String(fill["price"] ?? "?")} fee ${String(fill["fee"] ?? "?")} ` +
+    `FILL ${String(fill["market_id"] ?? "?")} ${String(fill["side"] ?? "?")} ` +
+      `${String(fill["size"] ?? "?")} @ ${String(fill["price"] ?? "?")} ` +
+      `fee ${String(fill["fee"] ?? "?")} ` +
       `(${String(fill["taker_or_maker"] ?? "?")})`,
   );
 }
@@ -444,7 +451,8 @@ function renderOrderUpdate(payload: unknown): void {
   if (payload === null || typeof payload !== "object") return;
   const order = payload as Record<string, unknown>;
   log(
-    `ORDER ${String(order["status"] ?? "?")} ${String(order["side"] ?? "?")} ` +
+    `ORDER ${String(order["market_id"] ?? "?")} ` +
+      `${String(order["status"] ?? "?")} ${String(order["side"] ?? "?")} ` +
       `${String(order["quantity"] ?? "?")} @ ${String(order["price"] ?? "?")}`,
   );
 }

@@ -148,7 +148,7 @@ documentation; this is the map.
 | [`decimal.ts`](./src/decimal.ts) | Exact money arithmetic on `BigInt`. |
 | [`config.ts`](./src/config.ts) | Environment parsing, and every guard that can be applied before a request exists. |
 | [`rest.ts`](./src/rest.ts) | One hardened request: deadlines, bounded bodies, retry policy, rate limiting. |
-| [`stream.ts`](./src/stream.ts) | The `op`-envelope WebSocket protocol, reconnection, and resume cursors. |
+| [`stream.ts`](./src/stream.ts) | The `op`-envelope WebSocket protocol, reconnection, resume cursors, and duplicate suppression. |
 | [`book.ts`](./src/book.ts) | Local book state, and when it may be trusted. |
 | [`trader.ts`](./src/trader.ts) | The write path — one order, at most once, always cancelled. |
 | [`index.ts`](./src/index.ts) | Wiring and lifecycle. |
@@ -212,6 +212,18 @@ the point it arises:
 - **A silently half-open connection.** TCP will not tell you the peer is gone;
   `onclose` simply never fires. A liveness watchdog treats a long silence as
   death and forces the reconnect the socket declined to trigger.
+- **Redelivery across a reconnect.** A resubscribe is a join, and a join can
+  hand back frames the previous connection already delivered — nothing
+  acknowledges frames, so a server backfilling from its own checkpoint is
+  backfilling from a point behind ours. An event stream is not idempotent at the
+  consumer: rendering the same `fills` frame twice is a fill that never
+  happened. So `stream.ts` keeps a per-channel high-water mark that it will
+  raise but never lower, and drops anything that does not advance it. It lives
+  in the stream rather than in each consumer, so a fifth channel added later is
+  covered without having to know it needed to be. The one thing a never-lowered
+  mark costs is recovery from a server that restarts its numbering, so a long
+  run of suppressed frames resets the filter and signals a gap rather than
+  letting a channel go quiet while traffic is still arriving.
 - **Overlapping work.** Single-flight guards, not hopeful `if` checks: one
   in-flight snapshot, one poll loop, one placement. The placement guard
   specifically covers the window where the request has been sent and the reply
@@ -222,7 +234,10 @@ the point it arises:
 - **Reconnect storms.** Exponential backoff with equal jitter, bounded to
   `[ceiling/2, ceiling]` so it is never zero and never synchronised across
   clients. A permanently failing mint (`401`) gives up at once instead of
-  retrying six times to get the same answer.
+  retrying six times to get the same answer. Only a connection that *stayed up*
+  clears the failure count — resetting it the moment a socket opens looks right
+  and is not, because a server that completes the upgrade and then drops the
+  connection would reset the backoff on every attempt and never escalate.
 
 ## Notes
 
