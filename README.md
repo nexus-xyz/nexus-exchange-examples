@@ -50,7 +50,9 @@ Examples are grouped by **track** — what the app is built on.
 Apps that talk to the API without an SDK, for readers working in a language we
 don't ship a client for.
 
-_None yet._
+| Example | What it shows |
+| --- | --- |
+| [`trading-terminal/`](./exchange-api/trading-terminal) | A terminal trading desk for one market: HMAC request signing by hand, the `op`-envelope WebSocket protocol, exact decimal money arithmetic, and a write path that places one order and guarantees it is cancelled. Zero runtime dependencies. |
 
 ### Track 2 — one whole app per SDK
 
