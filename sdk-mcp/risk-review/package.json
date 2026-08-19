@@ -1,0 +1,20 @@
+{
+  "name": "risk-review",
+  "version": "0.0.0",
+  "private": true,
+  "description": "An agent-shaped risk review of one Nexus Exchange account, over the MCP tool surface.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@nexus-xyz/exchange-mcp": "0.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "tsx": "4.23.8",
+    "typescript": "7.0.2"
+  }
+}

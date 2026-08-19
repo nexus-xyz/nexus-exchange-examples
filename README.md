@@ -61,7 +61,7 @@ don't ship a client for.
 | Rust | [`sdk-rust/`](./sdk-rust) | _None yet._ |
 | TypeScript | [`sdk-ts/`](./sdk-ts) | _None yet._ |
 | Python | [`sdk-python/`](./sdk-python) | _None yet._ |
-| MCP | [`sdk-mcp/`](./sdk-mcp) | _None yet._ |
+| MCP | [`sdk-mcp/`](./sdk-mcp) | [`risk-review/`](./sdk-mcp/risk-review) — reviews one account over the MCP tool surface, with an explicit read-only allowlist (blocked on an upstream fix shipping) |
 
 ### Track 3 — [`cli/`](./cli) · CLI-driven workflows
 
