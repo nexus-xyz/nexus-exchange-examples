@@ -53,6 +53,7 @@ don't ship a client for.
 | Example | What it shows |
 | --- | --- |
 | [`exchange-platform-demo/`](./exchange-api/exchange-platform-demo) | A complete white-label perpetuals venue frontend — landing page, terminal, and operator console — built on a mock mirror of the API contract (OpenAPI 0.7.0-pinned), so swapping to live is a base-URL change. |
+| [`trading-terminal/`](./exchange-api/trading-terminal) | A terminal trading desk for one market: HMAC request signing by hand, the `op`-envelope WebSocket protocol, exact decimal money arithmetic, and a write path that places one order and guarantees it is cancelled. Zero runtime dependencies. |
 
 ### Track 2 — one whole app per SDK
 
