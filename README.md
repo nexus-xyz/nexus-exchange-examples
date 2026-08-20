@@ -74,7 +74,9 @@ _None yet._
 Tools built on the market-data and history endpoints — reporting, backtesting,
 and analysis rather than order placement.
 
-_None yet._
+| Example | What it shows |
+| --- | --- |
+| [`market-report/`](./analytics/market-report) | A venue-wide market report — candles, funding, volume and the venue's own event stats — written to a terminal table, a CSV and a self-contained HTML page. No credentials, no dependencies, and mostly about the data validation an analytics tool needs before it computes anything. |
 
 ### Track 5 — builder codes
 

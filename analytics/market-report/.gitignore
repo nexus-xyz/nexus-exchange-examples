@@ -1,0 +1,3 @@
+# Report output and the response cache. Both are regenerated on every run.
+out/
+.cache/
