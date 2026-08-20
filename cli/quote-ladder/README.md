@@ -306,7 +306,7 @@ about is exactly what a reader without one cannot reach. So the venue is
 stubbed:
 
 ```bash
-./test/run-tests.sh      # 137 assertions, no network, no account
+./test/run-tests.sh      # 155 assertions, no network, no account
 ```
 
 [`test/fake-nexus.sh`](./test/fake-nexus.sh) stands in for the `nexus` binary,
@@ -314,8 +314,10 @@ answering from files the tests write and recording every invocation — which is
 how the suite asserts on what the app *did not* send. It covers the idempotent
 re-run, trailing zeros in an echoed price, the off-ladder cancel, the partially
 filled rung, a rejected batch entry, the crossing-rung and halted-market
-refusals, `--flatten` leaving a hand-placed order alone, every lock path
-including the stale one, and the decimal arithmetic directly.
+refusals, `--flatten` leaving a hand-placed order alone (and working while a
+market is halted), every lock path including the stale one, and — directly — the
+decimal arithmetic and the `.env` parser, including that a `$(...)` in that file
+stays literal text.
 
 ## Notes
 

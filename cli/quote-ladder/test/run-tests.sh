@@ -379,6 +379,28 @@ test_flatten_cancels_only_our_orders() {
   finish
 }
 
+test_flatten_works_on_a_halted_market() {
+  start "flatten while halted"
+  # The case flatten exists for. Nothing that could refuse — the mark price, the
+  # book, the tradable check — is allowed to run before the cancels.
+  cat >"$STUB_DIR/market-status.json" <<'JSON'
+{ "market_id": "BTC-USDX-PERP", "status": "halted",
+  "halted_at": "2026-08-19T00:00:00Z", "halt_reason": "maintenance" }
+JSON
+  rm -f "$STUB_DIR/mark-price.json" "$STUB_DIR/orderbook.json"
+  resting ql-b-138600-1 69300 0.001 >"$STUB_DIR/orders.json"
+  run_app --flatten
+  expect_status 0
+  expect_contains "standing down"
+  expect_file_contains "$STUB_DIR/cancels.log" "ql-b-138600-1"
+  if ! grep -q -E '(^| )(mark-price|orderbook)' "$STUB_DIR/calls.log"; then
+    pass "$CURRENT: read no price and no book"
+  else
+    fail "$CURRENT: read no price and no book" "$(cat "$STUB_DIR/calls.log")"
+  fi
+  finish
+}
+
 test_other_market_is_reported_not_cancelled() {
   start "owned order on another market"
   resting ql-b-999-10 3000 0.01 0 ETH-USDX-PERP >"$STUB_DIR/orders.json"
@@ -602,6 +624,92 @@ test_both_sides() {
   expect_contains "place    sell  70700"
   expect_contains "4 to place"
   finish
+}
+
+# ── the .env parser, directly ───────────────────────────────────────────────
+
+# `load_dotenv` is the one function here that reads attacker-shaped input — the
+# file whose whole purpose is to hold a credential — so it is exercised on its
+# own rather than through a run. Called in a subshell so the exports it makes
+# cannot leak into the next test.
+test_dotenv() {
+  CURRENT="dotenv"
+  local dir env_file canary got
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/quote-ladder-dotenv.XXXXXX")
+  env_file="$dir/.env"
+  canary="$dir/executed"
+
+  # Note what is in here: two shell expansions that would run if this file were
+  # sourced, and both must survive as literal text instead.
+  # shellcheck disable=SC2016  # the unexpanded $(...) and backticks are the point
+  {
+    printf '# a comment\n'
+    printf '\n'
+    printf 'PLAIN=1\n'
+    printf 'export EXPORTED=2\n'
+    printf '  INDENTED=3\n'
+    printf 'DQUOTED="a value"\n'
+    printf 'SQUOTED=%s\n' "'other value'"
+    printf 'EMPTY=\n'
+    printf 'SUBST=$(touch %s)\n' "$canary"
+    printf 'BACKTICK=`touch %s`\n' "$canary"
+    printf 'ALREADY_SET=from-file\n'
+    printf 'this line is not KEY=VALUE\n'
+    printf 'CRLF=ok\r\n'
+  } >"$env_file"
+
+  got=$(
+    set -uo pipefail
+    source "$APP_DIR/lib/common.sh"
+    source "$APP_DIR/lib/preflight.sh"
+    export ALREADY_SET=from-environment
+    load_dotenv "$env_file" 2>"$dir/warnings"
+    printf 'PLAIN=%s\n' "${PLAIN-unset}"
+    printf 'EXPORTED=%s\n' "${EXPORTED-unset}"
+    printf 'INDENTED=%s\n' "${INDENTED-unset}"
+    printf 'DQUOTED=%s\n' "${DQUOTED-unset}"
+    printf 'SQUOTED=%s\n' "${SQUOTED-unset}"
+    printf 'EMPTY=[%s]\n' "${EMPTY-unset}"
+    printf 'SUBST=%s\n' "${SUBST-unset}"
+    printf 'BACKTICK=%s\n' "${BACKTICK-unset}"
+    printf 'ALREADY_SET=%s\n' "${ALREADY_SET-unset}"
+    printf 'CRLF=[%s]\n' "${CRLF-unset}"
+  )
+  OUT="$got"$'\n'"$(cat "$dir/warnings")"
+  STATUS=0
+
+  expect_contains 'PLAIN=1'
+  expect_contains 'EXPORTED=2'
+  expect_contains 'INDENTED=3'
+  expect_contains 'DQUOTED=a value'
+  expect_contains 'SQUOTED=other value'
+  expect_contains 'EMPTY=[]'
+  expect_contains 'ALREADY_SET=from-environment'   # the environment wins over the file
+  expect_contains 'CRLF=[ok]'                      # no stray carriage return
+
+  # The whole point: the file is data, not code.
+  # shellcheck disable=SC2016  # asserting the literal text survived unexpanded
+  expect_contains 'SUBST=$(touch'
+  expect_contains 'BACKTICK=`touch'
+  if [[ ! -e $canary ]]; then pass "$CURRENT: nothing in the file was executed"
+  else fail "$CURRENT: nothing in the file was executed" "$canary exists"; fi
+
+  # An unparsable line is reported by number, never by content — a mangled line
+  # in this file is as likely as not to be a mangled secret.
+  expect_contains "line 12 is not KEY=VALUE"
+  expect_missing "this line is not"
+
+  # A missing file is not an error: credentials may come from the environment.
+  if ( set -euo pipefail
+       source "$APP_DIR/lib/common.sh"
+       source "$APP_DIR/lib/preflight.sh"
+       load_dotenv "$dir/nonexistent" ) 2>/dev/null; then
+    pass "$CURRENT: a missing .env is not an error"
+  else
+    fail "$CURRENT: a missing .env is not an error" "load_dotenv returned non-zero"
+  fi
+
+  rm -rf -- "$dir"
 }
 
 # ── decimal arithmetic, directly ────────────────────────────────────────────

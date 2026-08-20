@@ -92,8 +92,15 @@ resolve_config() {
   require_int_range LADDER_READ_ATTEMPTS "$LADDER_READ_ATTEMPTS" 1 5
 
   # An empty quantity means "the market's own minimum", resolved once the trading
-  # rules are known. Anything else has to be a plain decimal now.
-  [[ -z $LADDER_QUANTITY ]] || dec_parse "$LADDER_QUANTITY" LADDER_QUANTITY >/dev/null
+  # rules are known. Anything else has to be a positive plain decimal now.
+  # Shape-checked here so the failure carries the variable's name and this
+  # function's exit code; `dec_parse` is the deeper guard, and it answers to
+  # nobody's naming.
+  if [[ -n $LADDER_QUANTITY ]]; then
+    [[ $LADDER_QUANTITY =~ ^[0-9]+(\.[0-9]+)?$ ]] ||
+      die "$EX_USAGE" "LADDER_QUANTITY must be a positive decimal like 0.001, got $(quoted "$LADDER_QUANTITY")"
+    dec_parse "$LADDER_QUANTITY" LADDER_QUANTITY >/dev/null
+  fi
 }
 
 # Refuse to run anywhere that could move money that matters.

@@ -119,9 +119,13 @@ report_header() {
     "rules" "$MARKET_TICK" "$MARKET_LOT" "$MARKET_MIN" "$MARKET_MAX"
   printf '%-12s%s   status %s\n' "market" "$LADDER_MARKET" "$MARKET_STATUS"
   printf '%-12smark %s   best bid %s   best ask %s\n' \
-    "price" "$MARK_PRICE" "${BEST_BID:-—}" "${BEST_ASK:-—}"
-  printf '%-12s%s × %s, from %sbps, %sbps apart, %s per rung, post-only\n' \
-    "ladder" "$LADDER_SIDES" "$LADDER_RUNGS" "$LADDER_START_BPS" "$LADDER_STEP_BPS" "$LADDER_RUNG_QTY"
+    "price" "${MARK_PRICE:-—}" "${BEST_BID:-—}" "${BEST_ASK:-—}"
+  if [[ $MODE == flatten ]]; then
+    printf '%-12sstanding down — every rung this app owns is cancelled, none placed\n' "ladder"
+  else
+    printf '%-12s%s × %s, from %sbps, %sbps apart, %s per rung, post-only\n' \
+      "ladder" "$LADDER_SIDES" "$LADDER_RUNGS" "$LADDER_START_BPS" "$LADDER_STEP_BPS" "$LADDER_RUNG_QTY"
+  fi
   printf '%-12s%s-*\n' "owns" "$LADDER_TAG"
   hr
 }
@@ -324,21 +328,24 @@ main() {
 
   load_market_rules
   resolve_quantity
-  load_mark_price
-  load_top_of_book
 
   local tradable=1
   check_market_tradable || tradable=0
 
   if [[ $MODE == flatten ]]; then
-    # Standing down does not need a tradable market, a mark price, or a ladder:
-    # cancelling is allowed while a market is halted, and it is exactly when you
-    # are most likely to want it.
+    # Standing down needs none of what follows — not a mark price, not a book,
+    # not a tradable market. Cancelling is allowed while a market is halted, and
+    # a halted market is exactly when you are most likely to want it, so nothing
+    # that could refuse is allowed to run first. The desired set is empty, which
+    # makes every owned rung off-ladder, which makes flatten the same code path
+    # as everything else.
     DESIRED_IDS=()
     DESIRED_SIDE=()
     DESIRED_PRICE=()
     DESIRED_QTY=()
   else
+    load_mark_price
+    load_top_of_book
     build_desired
   fi
 

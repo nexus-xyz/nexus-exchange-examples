@@ -112,6 +112,7 @@ check_market_tradable() {
 # writing `asks` comes back empty — so a mid-based ladder would be unquotable
 # exactly when it is most needed. The mark is a single published number that is
 # always there.
+MARK_PRICE=""
 load_mark_price() {
   nx_read "reading mark price" mark-price "$LADDER_MARKET"
   MARK_PRICE=$(printf '%s' "$NX_OUT" | nx_jq '.mark_price')
