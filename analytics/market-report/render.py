@@ -93,6 +93,7 @@ def text_report(
     )
     lines.append(
         f"{'requests':<14}{meta.requests_made} fetched, {meta.cache_hits} served from cache"
+        + ("   [--strict]" if meta.strict else "")
     )
     lines.append(
         f"{'venue':<14}health {stats.health}, ingest lag {fmt_int(stats.lag_ms)} ms, "

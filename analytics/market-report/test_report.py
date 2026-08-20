@@ -415,6 +415,22 @@ class TestMarketSources(unittest.TestCase):
         self.assertIn("missing_from_catalog", issues)
         self.assertIn("missing_from_tickers", issues)
 
+    def test_a_one_sided_book_is_noted_but_routine(self) -> None:
+        """Testnet routinely quotes one side or neither, and it is not a defect."""
+        tickers = parse_tickers({"M": {"bid": Decimal("10"), "ask": None}})
+        snapshot = merge_market_sources(parse_catalog([{"market_id": "M"}]), {}, tickers)["M"]
+        analysis = analyze_market(snapshot, tickers["M"], None, None)
+        found = [i for i in analysis.issues if i.code == "one_sided_book"]
+        self.assertEqual(len(found), 1)
+        self.assertIn("no ask", found[0].detail)
+        self.assertFalse(found[0].alertable)
+
+    def test_a_two_sided_book_is_not_noted(self) -> None:
+        tickers = parse_tickers({"M": {"bid": Decimal("10"), "ask": Decimal("11")}})
+        snapshot = merge_market_sources(parse_catalog([{"market_id": "M"}]), {}, tickers)["M"]
+        analysis = analyze_market(snapshot, tickers["M"], None, None)
+        self.assertNotIn("one_sided_book", [i.code for i in analysis.issues])
+
     def test_null_is_not_zero(self) -> None:
         """`NDQ-USDX-PERP` reports a null close with a real high and low."""
         tickers = parse_tickers({"X": {"close": None, "high": Decimal("5"), "bid": None}})

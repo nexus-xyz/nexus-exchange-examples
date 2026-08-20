@@ -31,7 +31,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal, DivisionByZero, InvalidOperation
-from typing import Any, Iterable, Literal, Sequence
+from typing import Any, Literal, Sequence
 
 # The only timeframes this deployment actually honours, and their bucket widths.
 # Measured: every other value returns the 1m series (see the module docstring).
@@ -117,11 +117,6 @@ class CandleSeries:
     def usable(self) -> bool:
         return len(self.candles) >= 2 and not any(i.fatal for i in self.issues)
 
-    @property
-    def span_ms(self) -> int:
-        if len(self.candles) < 2:
-            return 0
-        return self.candles[-1].start_ms - self.candles[0].start_ms
 
 
 def to_decimal(value: Any, what: str) -> Decimal:
@@ -559,6 +554,3 @@ def bucket_fill_history(rows: Any, *, step_ms: int, now_ms: int, buckets: int) -
             counts[index] += fills
     return counts
 
-
-def fatal_issues(issues: Iterable[Issue]) -> list[Issue]:
-    return [issue for issue in issues if issue.fatal]

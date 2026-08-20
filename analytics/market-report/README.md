@@ -154,7 +154,7 @@ switching on the code cannot read a typo as an outage.
 | [`series.py`](./series.py) | **The point of the example.** Turning a payload into a series it is safe to compute on. |
 | [`analysis.py`](./analysis.py) | The figures, and reconciling the three routes that disagree about which markets exist. |
 | [`render.py`](./render.py) | Terminal table, CSV, and the self-contained HTML. |
-| [`test_report.py`](./test_report.py) | 65 tests, offline. |
+| [`test_report.py`](./test_report.py) | 67 tests, offline. |
 
 Five decisions worth copying.
 
@@ -301,7 +301,7 @@ test that a halt reason of `<script>alert(1)</script>` survives as text.
 ## Verifying it
 
 ```bash
-python3 -m unittest -q      # 65 tests, no network, no credentials
+python3 -m unittest -q      # 67 tests, no network, no credentials
 ```
 
 The validation is checked against the exact shapes the live venue returns — the

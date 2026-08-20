@@ -93,10 +93,6 @@ class MarketSnapshot:
     in_tickers: bool = True
 
     @property
-    def tradable(self) -> bool:
-        return self.status == "active" and self.halted_at_ms is None
-
-    @property
     def source_issues(self) -> tuple[Issue, ...]:
         found: list[Issue] = []
         if not self.in_summary:
@@ -356,8 +352,15 @@ def analyze_market(
     funding: FundingSeries | None,
 ) -> MarketAnalysis:
     """Derive the window figures, or leave them absent."""
+    # Computed before the early return, because these findings are about the
+    # snapshot and the ticker: a market with no usable candle series can still
+    # have a one-sided book worth mentioning.
+    derived = _derived_findings(snapshot, ticker, None)
+
     if candles is None or not candles.usable or candles.step_ms is None:
-        return MarketAnalysis(snapshot, ticker, candles, None, funding)
+        return MarketAnalysis(
+            snapshot, ticker, candles, None, funding, derived_issues=derived
+        )
 
     rows = candles.candles
     returns = consecutive_returns(candles)
@@ -397,7 +400,7 @@ def analyze_market(
         series=candles,
         returns=returns,
         funding=funding,
-        derived_issues=_price_disagreement(snapshot, ticker, window_close),
+        derived_issues=_derived_findings(snapshot, ticker, window_close),
         window_open=window_open,
         window_high=window_high,
         window_low=window_low,
@@ -414,6 +417,36 @@ def analyze_market(
 # rather than hidden: 2x is far outside anything a stale quote explains, and far
 # inside the 25x that testnet is currently reporting for one market.
 PRICE_DISAGREEMENT_FACTOR = Decimal(2)
+
+
+def _derived_findings(
+    snapshot: MarketSnapshot, ticker: TickerSnapshot | None, window_close: Decimal | None
+) -> tuple[Issue, ...]:
+    """Findings about a market that come from comparing the venue to itself."""
+    found: list[Issue] = []
+
+    # Neither side of the book quoted. Not a defect and not this report's problem
+    # — nothing here computes a spread — but it is the sort of thing an analytics
+    # reader needs to know *before* they compute one, and it appears nowhere else
+    # in the output because bid and ask are not columns. Routine, so `info`.
+    if ticker is not None and not ticker.has_two_sided_book:
+        side = "neither side"
+        if ticker.bid is not None:
+            side = "no ask"
+        elif ticker.ask is not None:
+            side = "no bid"
+        found.append(
+            Issue(
+                "one_sided_book",
+                f"/api/v1/tickers reports {side} for this market, so any spread or "
+                "mid derived from it would be unusable — this report prices off "
+                "candles and the mark instead",
+                severity="info",
+            )
+        )
+
+    found.extend(_price_disagreement(snapshot, ticker, window_close))
+    return tuple(found)
 
 
 def _price_disagreement(
