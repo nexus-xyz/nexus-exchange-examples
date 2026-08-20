@@ -129,7 +129,7 @@ escape hatch.
 | `--attempts N` | `3` | Attempts per request. Only transient failures retry. |
 | `--cache-ttl SECONDS` | `300` | How long a cached response stays usable. |
 | `--no-cache` | off | Always fetch; write nothing to `.cache/`. |
-| `--strict` | off | Exit non-zero if any series had a data-quality issue. For running this on a schedule, where a silently degraded feed is the thing you want to hear about. |
+| `--strict` | off | Exit non-zero if any finding is worse than routine — see below. For running this on a schedule, where a silently degraded feed is the thing you want to hear about. |
 
 ### Exit codes
 
@@ -154,7 +154,7 @@ switching on the code cannot read a typo as an outage.
 | [`series.py`](./series.py) | **The point of the example.** Turning a payload into a series it is safe to compute on. |
 | [`analysis.py`](./analysis.py) | The figures, and reconciling the three routes that disagree about which markets exist. |
 | [`render.py`](./render.py) | Terminal table, CSV, and the self-contained HTML. |
-| [`test_report.py`](./test_report.py) | 59 tests, offline. |
+| [`test_report.py`](./test_report.py) | 65 tests, offline. |
 
 Five decisions worth copying.
 
@@ -278,11 +278,16 @@ available proxy and not the real thing.
   equal jitter. A 400 or a 404 says the same thing however many times you ask.
 - **Responses are cached to `.cache/`** with a TTL, because analytics gets re-run
   and iterating on an analysis should not mean re-fetching the same window twenty
-  times. Cache files are written to a temporary name and moved into place, so an
-  interrupted run cannot leave a truncated file that a later run reads as data,
-  and the key is a hash of the full URL so a run against a different host can
-  never be served this one's answers. Only public data goes through it; there is
-  no authenticated call in this example.
+  times. Three details in there are the ones that matter. It stores the **raw
+  response body**, not the parsed payload: JSON has no decimal type, so
+  re-serialising `Decimal`s brings them back as *strings*, and a cache hit would
+  then hand the program different types than a live fetch — a bug that only
+  appears on the second run. Cache files are written to a temporary name and
+  moved into place, so an interrupted run cannot leave a truncated file that a
+  later run reads as data, and nothing is cached until it has parsed. And the key
+  is a hash of the full URL, so a run against a different host can never be
+  served this one's answers. Only public data goes through it; there is no
+  authenticated call in this example.
 - **Pacing is a minimum interval, not a token bucket**, and the comment says why:
   this tool makes a couple of dozen requests in a burst and exits. A trading
   client would need the bucket.
@@ -296,7 +301,7 @@ test that a halt reason of `<script>alert(1)</script>` survives as text.
 ## Verifying it
 
 ```bash
-python3 -m unittest -q      # 59 tests, no network, no credentials
+python3 -m unittest -q      # 65 tests, no network, no credentials
 ```
 
 The validation is checked against the exact shapes the live venue returns — the
@@ -333,10 +338,17 @@ mypy .                      # strict, targeting 3.12
 - **The window is the buckets that came back, never an interpolated grid.** No
   figure here is computed over a filled-in series, and coverage is reported next
   to every row so you can see how much of the window was real.
-- **`--strict` is the scheduled-run switch.** A feed that quietly degrades — a
-  timeframe stops being honoured, a market drops out of a route — is exactly what
-  a cron job should shout about, and exactly what a report that only prints
-  numbers will hide.
+- **A market that could not be fetched keeps its row**, with the failure attached
+  as a finding rather than only logged — a CSV row with no numbers and no reason
+  is indistinguishable from a quiet market.
+- **`--strict` is the scheduled-run switch**, and findings carry a severity so
+  that it means something. A feed that quietly degrades — a timeframe stops being
+  honoured, a market drops out of a route, two of the venue's prices for one
+  market stop agreeing — is exactly what a cron job should shout about. A dropped
+  forming bucket is not: it happens on every single run. So findings are `info`
+  (routine, `·`), `warn` (the numbers mean something different now, `*`) or
+  `fatal` (no figure could be derived, `!`), and `--strict` fires on the last two
+  only. A check that always fails is a check nobody looks at.
 - Not implemented, and out of scope: the WebSocket (this is a batch tool by
   design), order-book depth or liquidity metrics, per-trade data from
   `/markets/{id}/trades`, cross-market correlation, and any persistence beyond

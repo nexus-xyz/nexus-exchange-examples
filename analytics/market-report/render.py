@@ -148,15 +148,17 @@ def _quality_block(analyses: Sequence[MarketAnalysis]) -> str:
         any_issue = True
         lines.append(f"  {analysis.market}")
         for issue in issues:
-            marker = "!" if issue.fatal else "·"
+            marker = {"fatal": "!", "warn": "*", "info": "·"}[issue.severity]
             lines.append(f"    {marker} {issue.code}: {issue.detail}")
     if not any_issue:
         lines.append("  nothing to report — every series was complete and on-grid.")
     lines.append("")
     lines.append(
-        "  `!` is fatal — no window figures could be derived from that series, so "
-        "its row is dashes rather than zeros."
+        "  `!` no figures could be derived from that series, so its row is dashes "
+        "rather than zeros.  `*` the feed is degraded in a way that changes what "
+        "the numbers mean.  `·` normal bookkeeping."
     )
+    lines.append("  --strict exits non-zero for `!` and `*`, never for `·`.")
     lines.append(
         "  RET/VOL/VWAP cover the buckets that came back, never an interpolated "
         "window. FUND%ann is the mean funding rate over the samples fetched, "
@@ -298,6 +300,7 @@ ul.issues li { margin: .15rem 0; }
 code { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .fatal { color: var(--bad); }
 .warn { color: var(--warn); }
+.info { color: var(--muted); }
 footer { margin-top: 2.5rem; color: var(--muted); font-size: .9rem; }
 """
 
@@ -407,7 +410,7 @@ def html_report(
         out.append(f"<p><strong>{esc(analysis.market)}</strong></p>")
         out.append('<ul class="issues">')
         for issue in analysis.issues:
-            css = "fatal" if issue.fatal else "warn"
+            css = "fatal" if issue.fatal else ("warn" if issue.alertable else "info")
             out.append(
                 f'<li><span class="{css}"><code>{esc(issue.code)}</code></span> '
                 f"{esc(issue.detail)}</li>"

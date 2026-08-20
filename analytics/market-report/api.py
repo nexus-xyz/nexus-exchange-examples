@@ -21,7 +21,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping
@@ -67,12 +66,6 @@ class _NoRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
-@dataclass(frozen=True)
-class CacheEntry:
-    fetched_at: float
-    payload: JsonValue
-
-
 class Cache:
     """A tiny on-disk cache, because analytics gets re-run.
 
@@ -81,6 +74,14 @@ class Cache:
     is no authenticated call in this example, and writing account data to a
     plain file in the working directory would be a different decision needing a
     different justification.
+
+    It stores the **raw response body**, not the parsed payload, and that is the
+    whole design. Storing the parsed object means re-serialising `Decimal`s, and
+    since JSON has no decimal type they come back as *strings* — so a cache hit
+    would hand the rest of the program subtly different types than a live fetch,
+    and any bug that produced would only appear on the second run. Keeping the
+    body means a hit and a miss go through exactly the same parse, so they cannot
+    disagree.
     """
 
     def __init__(self, directory: Path, ttl_seconds: float) -> None:
@@ -90,34 +91,41 @@ class Cache:
     def _path(self, key: str) -> Path:
         return self.directory / f"{key}.json"
 
-    def get(self, key: str) -> JsonValue | None:
-        path = self._path(key)
+    def get(self, key: str) -> str | None:
+        """The cached response body, or None for a miss, a stale or a bad entry."""
         try:
-            raw = path.read_text(encoding="utf-8")
-        except (OSError, ValueError):
+            raw = self._path(key).read_text(encoding="utf-8")
+        except OSError:
             return None
         try:
-            entry = json.loads(raw, parse_float=Decimal)
+            entry = json.loads(raw)
         except json.JSONDecodeError:
             # A half-written file from an interrupted run. Not an error: the
             # request is simply made again.
             return None
-        if not isinstance(entry, dict) or "fetched_at" not in entry:
+        if not isinstance(entry, dict):
             return None
-        age = time.time() - float(entry["fetched_at"])
+        fetched_at = entry.get("fetched_at")
+        body = entry.get("body")
+        if not isinstance(body, str) or not isinstance(fetched_at, (int, float)):
+            return None
+        age = time.time() - float(fetched_at)
         if age > self.ttl_seconds or age < 0:
+            # A negative age means the file is stamped in the future — a clock
+            # change, or a file copied from elsewhere. Treated as a miss rather
+            # than trusted indefinitely.
             return None
-        return entry.get("payload")
+        return body
 
-    def put(self, key: str, payload: JsonValue) -> None:
+    def put(self, key: str, body: str) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
         target = self._path(key)
         # Written to a temporary file and moved into place, so a crash mid-write
         # cannot leave a truncated file that a later run reads as data. `replace`
-        # is atomic on the same filesystem.
+        # is atomic on the same filesystem. The pid is in the temporary name so
+        # two runs cannot collide on it.
         temp = target.with_suffix(f".{os.getpid()}.tmp")
-        body = json.dumps({"fetched_at": time.time(), "payload": payload}, default=str)
-        temp.write_text(body, encoding="utf-8")
+        temp.write_text(json.dumps({"fetched_at": time.time(), "body": body}), encoding="utf-8")
         temp.replace(target)
 
 
@@ -162,12 +170,13 @@ class Api:
             cached = self.cache.get(key)
             if cached is not None:
                 self.cache_hits += 1
-                return cached
+                return self._parse(cached, f"{url} (cached)")
 
-        payload = self._get_with_retries(url)
-
+        body = self._get_with_retries(url)
+        payload = self._parse(body, url)
+        # Cached only after it parsed, so a malformed response is never stored.
         if self.cache is not None:
-            self.cache.put(key, payload)
+            self.cache.put(key, body)
         return payload
 
     # ── internals ──────────────────────────────────────────────────────────
@@ -191,7 +200,7 @@ class Api:
             time.sleep(self.min_interval - elapsed)
         self._last_request_at = time.monotonic()
 
-    def _get_with_retries(self, url: str) -> JsonValue:
+    def _get_with_retries(self, url: str) -> str:
         last_error: Exception | None = None
         for attempt in range(1, self.attempts + 1):
             self._pace()
@@ -207,7 +216,7 @@ class Api:
             time.sleep(ceiling / 2 + random.random() * ceiling / 2)
         raise ApiError(str(last_error))
 
-    def _get_once(self, url: str) -> JsonValue:
+    def _get_once(self, url: str) -> str:
         request = urllib.request.Request(
             url,
             method="GET",
@@ -218,6 +227,12 @@ class Api:
             },
         )
         self.request_count += 1
+        status: int
+        content_type: str
+        # Annotated because `urlopen` is typed as returning `Any`, and an
+        # unannotated `body` would silently make `body.decode()` an `Any` too —
+        # which is how a typed program grows an untyped middle.
+        body: bytes
         try:
             with self._opener.open(request, timeout=self.timeout) as response:
                 status = int(response.status)
@@ -265,17 +280,28 @@ class Api:
             )
 
         try:
-            # `parse_float=Decimal` is the single most important line in this
-            # file. The market-data routes are CCXT-shaped and send prices as
-            # JSON *doubles* — the live venue really does return a 24h change of
-            # 391.2000000000003 — so without it every price in this report would
-            # be a float before any of the careful arithmetic downstream could
-            # help. Parsing straight to Decimal keeps the digits the venue
-            # actually sent, and makes a float impossible to introduce by
-            # accident later: there are none in the data to begin with.
-            return json.loads(body.decode("utf-8"), parse_float=Decimal)
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise ApiError(f"GET {url} → HTTP {status}, unparsable JSON: {exc}") from exc
+            return body.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ApiError(f"GET {url} → HTTP {status}, body is not UTF-8: {exc}") from exc
+
+    def _parse(self, body: str, where: str) -> JsonValue:
+        """Decode JSON with every float as a `Decimal`.
+
+        `parse_float=Decimal` is the single most important argument in this file.
+        The market-data routes are CCXT-shaped and send prices as JSON *doubles*
+        — the live venue really does return a 24h change of 391.2000000000003 —
+        so without it every price in this report would be a float before any of
+        the careful arithmetic downstream could help. Parsing straight to Decimal
+        keeps the digits the venue actually sent, and makes a float impossible to
+        introduce later by accident: there are none in the data to begin with.
+
+        It lives in one method so that a cache hit and a live fetch cannot
+        possibly parse differently.
+        """
+        try:
+            return json.loads(body, parse_float=Decimal)
+        except json.JSONDecodeError as exc:
+            raise ApiError(f"GET {where}: unparsable JSON: {exc}") from exc
 
 
 def _describe_error_body(text: str) -> str:

@@ -31,7 +31,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal, DivisionByZero, InvalidOperation
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Literal, Sequence
 
 # The only timeframes this deployment actually honours, and their bucket widths.
 # Measured: every other value returns the 1m series (see the module docstring).
@@ -43,13 +43,32 @@ CANDLE_LIMIT_CAP = 1000
 MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000
 
 
+# How much a finding matters. The distinction is what makes `--strict` usable: a
+# dropped forming bucket happens on literally every run and means nothing is
+# wrong, so a strict mode that fires on it fires always and gets turned off.
+#
+#   info   normal bookkeeping — worth printing, never worth alerting on
+#   warn   the feed is degraded in a way that changes what the numbers mean
+#   fatal  no figure can be derived from this series at all
+Severity = Literal["info", "warn", "fatal"]
+
+
 @dataclass(frozen=True)
 class Issue:
-    """One thing wrong with a series, stated plainly enough to print."""
+    """One thing worth saying about a series, stated plainly enough to print."""
 
     code: str
     detail: str
-    fatal: bool = False
+    severity: Severity = "warn"
+
+    @property
+    def fatal(self) -> bool:
+        return self.severity == "fatal"
+
+    @property
+    def alertable(self) -> bool:
+        """True for anything `--strict` should exit non-zero over."""
+        return self.severity != "info"
 
 
 @dataclass(frozen=True)
@@ -155,7 +174,7 @@ def parse_candles(
                 Issue(
                     "payload_shape",
                     f"expected a JSON array of candles, got {type(rows).__name__}",
-                    fatal=True,
+                    severity="fatal",
                 ),
             ),
         )
@@ -250,7 +269,7 @@ def parse_candles(
                 f"{requested_timeframe!r} is not one of the honoured timeframes "
                 f"({', '.join(TIMEFRAMES)}); this venue answers anything else with "
                 "1m candles and no error",
-                fatal=True,
+                severity="fatal",
             )
         )
     elif step_ms is not None and step_ms != expected:
@@ -261,7 +280,7 @@ def parse_candles(
                 f"{step_ms} ms buckets — the venue silently substituted a different "
                 "interval, so nothing here can be labelled "
                 f"{requested_timeframe}",
-                fatal=True,
+                severity="fatal",
             )
         )
 
@@ -292,6 +311,7 @@ def parse_candles(
                 "forming_bucket_dropped",
                 f"the bucket starting at {dropped.start_ms} has not closed yet and "
                 "was excluded",
+                severity="info",
             )
         )
 
@@ -319,7 +339,7 @@ def parse_candles(
                 f"the venue returned no candles at all at {requested_timeframe}; some "
                 "markets here have a 1m series and nothing coarser, so try "
                 "--timeframe 1m before concluding the market never traded",
-                fatal=True,
+                severity="fatal",
             )
         )
     elif len(on_grid) < 2:
@@ -328,7 +348,7 @@ def parse_candles(
                 "too_short",
                 f"only {len(on_grid)} usable candle(s) after validation — not enough "
                 "for a return",
-                fatal=True,
+                severity="fatal",
             )
         )
 
@@ -523,14 +543,15 @@ def bucket_fill_history(rows: Any, *, step_ms: int, now_ms: int, buckets: int) -
     for row in rows:
         if not isinstance(row, dict):
             continue
-        try:
-            timestamp_raw = row.get("timestamp")
-            if isinstance(timestamp_raw, float):
-                continue
-            timestamp = int(timestamp_raw)  # type: ignore[arg-type]
-            fills = int(row.get("fills", 0))
-        except (TypeError, ValueError):
+        # Checked with `isinstance` rather than coerced in a `try`. A `bool` is
+        # an `int` in Python, and `True` would otherwise become a timestamp of 1.
+        timestamp_raw = row.get("timestamp")
+        fills_raw = row.get("fills", 0)
+        if not isinstance(timestamp_raw, int) or isinstance(timestamp_raw, bool):
             continue
+        if not isinstance(fills_raw, int) or isinstance(fills_raw, bool):
+            continue
+        timestamp, fills = timestamp_raw, fills_raw
         if timestamp < start or timestamp >= now_ms:
             continue
         index = (timestamp - start) // step_ms

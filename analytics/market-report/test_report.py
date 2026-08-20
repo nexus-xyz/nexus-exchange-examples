@@ -202,6 +202,56 @@ class TestCandleValidation(unittest.TestCase):
         self.assertIn("window_truncated", codes(cut))
 
 
+class TestSeverity(unittest.TestCase):
+    """`--strict` is only useful if routine findings are not alertable.
+
+    The regression this guards: a dropped forming bucket happens on every run, so
+    when it counted as a data-quality issue `--strict` failed always — and a check
+    that always fails is a check nobody looks at.
+    """
+
+    def series_with_a_forming_bucket(self) -> Any:
+        rows = [candle(HOUR * i) for i in range(1, 6)]
+        return parse_candles(
+            rows, market="M", requested_timeframe="1h", limit=5, window_buckets=5,
+            now_ms=5 * HOUR + 100,
+        )
+
+    def test_a_forming_bucket_is_not_alertable(self) -> None:
+        series = self.series_with_a_forming_bucket()
+        forming = [i for i in series.issues if i.code == "forming_bucket_dropped"]
+        self.assertEqual(len(forming), 1)
+        self.assertEqual(forming[0].severity, "info")
+        self.assertFalse(forming[0].alertable)
+        self.assertFalse(forming[0].fatal)
+        # ...and it does not make the series unusable.
+        self.assertTrue(series.usable)
+
+    def test_a_degraded_feed_is_alertable(self) -> None:
+        rows = [candle(HOUR * i) for i in (1, 2, 5, 6)]
+        series = parse_candles(
+            rows, market="M", requested_timeframe="1h", limit=6, window_buckets=6, now_ms=NOW
+        )
+        missing = [i for i in series.issues if i.code == "missing_buckets"]
+        self.assertEqual(missing[0].severity, "warn")
+        self.assertTrue(missing[0].alertable)
+
+    def test_a_fatal_issue_is_alertable_too(self) -> None:
+        series = parse_candles(
+            [candle(MINUTE * i) for i in range(1, 30)],
+            market="M", requested_timeframe="1h", limit=30, window_buckets=30, now_ms=NOW,
+        )
+        fatal = [i for i in series.issues if i.code == "timeframe_not_honoured"]
+        self.assertTrue(fatal[0].fatal)
+        self.assertTrue(fatal[0].alertable)
+
+    def test_default_severity_is_warn(self) -> None:
+        from series import Issue
+
+        self.assertEqual(Issue("x", "y").severity, "warn")
+        self.assertTrue(Issue("x", "y").alertable)
+
+
 class TestReturnsAndVolatility(unittest.TestCase):
     def test_returns_skip_gap_spanning_pairs(self) -> None:
         rows = [candle(HOUR, "100"), candle(2 * HOUR, "110"), candle(5 * HOUR, "121")]
@@ -650,6 +700,33 @@ class TestApiAgainstALocalServer(unittest.TestCase):
         finally:
             api.MAX_RESPONSE_BYTES = original
 
+    def test_a_cache_hit_parses_exactly_like_a_fetch(self) -> None:
+        """The reason the cache stores the raw body and not the parsed payload.
+
+        Re-serialising `Decimal`s turns them into JSON strings, so a cached run
+        would hand the program different types than a live one — and any bug that
+        caused would only show up on the second run.
+        """
+        _Handler.routes["/dec"] = lambda: (200, "application/json", b'{"price": 2303.3}')
+        with TemporaryDirectory() as directory:
+            client = self.client(cache=Cache(Path(directory), ttl_seconds=60))
+            live = client.get_json("/dec")
+            cached = client.get_json("/dec")
+        self.assertEqual(_Handler.hits.get("/dec"), 1)
+        self.assertIsInstance(live["price"], Decimal)
+        self.assertIsInstance(cached["price"], Decimal)
+        self.assertEqual(live, cached)
+        self.assertEqual(str(cached["price"]), "2303.3")
+
+    def test_a_malformed_response_is_never_cached(self) -> None:
+        _Handler.routes["/bad-json"] = lambda: (200, "application/json", b"{not json")
+        with TemporaryDirectory() as directory:
+            cache = Cache(Path(directory), ttl_seconds=60)
+            client = self.client(cache=cache, attempts=1)
+            with self.assertRaises(ApiError):
+                client.get_json("/bad-json")
+            self.assertEqual(list(Path(directory).glob("*.json")), [])
+
     def test_the_cache_serves_the_second_read(self) -> None:
         _Handler.routes["/cached"] = lambda: (200, "application/json", b'{"n": 1}')
         with TemporaryDirectory() as directory:
@@ -672,7 +749,14 @@ class TestApiAgainstALocalServer(unittest.TestCase):
             # A half-written file from an interrupted run must not be read as data.
             corrupt = Cache(Path(directory), ttl_seconds=60)
             key = client._cache_key(f"{self.base}/c")
-            (Path(directory) / f"{key}.json").write_text('{"fetched_at": 0, "pay')
+            entry = Path(directory) / f"{key}.json"
+            entry.write_text('{"fetched_at": 0, "bo')          # truncated mid-write
+            self.assertIsNone(corrupt.get(key))
+            entry.write_text('{"fetched_at": "soon", "body": "{}"}')   # junk stamp
+            self.assertIsNone(corrupt.get(key))
+            entry.write_text('{"body": "{}"}')                 # no stamp at all
+            self.assertIsNone(corrupt.get(key))
+            entry.write_text('["not", "an", "object"]')
             self.assertIsNone(corrupt.get(key))
 
     def test_a_base_url_ending_in_api_v1_is_refused(self) -> None:

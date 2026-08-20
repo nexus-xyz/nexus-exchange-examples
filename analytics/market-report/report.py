@@ -39,6 +39,7 @@ from render import ReportMeta, html_report, text_report, write_csv
 from series import (
     CANDLE_LIMIT_CAP,
     TIMEFRAMES,
+    Issue,
     bucket_fill_history,
     parse_candles,
     parse_funding,
@@ -264,11 +265,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except ApiError as exc:
             # One market failing is not the venue failing. It is reported by
-            # name and the rest of the report is still produced — an analytics
-            # tool that drops a market silently is worse than one that says so.
+            # name, and the failure is attached to the row as a finding rather
+            # than only logged — otherwise the CSV shows a market with no numbers
+            # and no reason, which is indistinguishable from a quiet market.
             print(f"warning: {market}: {exc}", file=sys.stderr)
             failed.append(market)
-            analyses.append(analyze_market(snapshot, tickers.get(market), None, None))
+            analyses.append(
+                dataclasses.replace(
+                    analyze_market(snapshot, tickers.get(market), None, None),
+                    derived_issues=(
+                        Issue("fetch_failed", str(exc), severity="fatal"),
+                    ),
+                )
+            )
             continue
 
         series = parse_candles(
@@ -336,11 +345,19 @@ def main(argv: Sequence[str] | None = None) -> int:
               file=sys.stderr)
 
     if args.strict:
-        flagged = [analysis.market for analysis in analyses if analysis.issues]
+        # `alertable` rather than "has any issue at all". A dropped forming
+        # bucket is normal on every single run, so a strict mode that counted it
+        # would fail always — and a check that always fails is a check nobody
+        # looks at.
+        flagged = [
+            analysis.market
+            for analysis in analyses
+            if any(issue.alertable for issue in analysis.issues)
+        ]
         if flagged:
             print(
-                f"error: --strict and {len(flagged)} market(s) had data-quality "
-                f"issues: {', '.join(flagged)}",
+                f"error: --strict and {len(flagged)} market(s) had a degraded feed: "
+                f"{', '.join(flagged)}",
                 file=sys.stderr,
             )
             return EX_QUALITY
