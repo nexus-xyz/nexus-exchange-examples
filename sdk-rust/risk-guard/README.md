@@ -12,7 +12,7 @@ limits: max-notional, max-loss — polling every 15s
 ok  max-notional=within max-loss=within  resting=2
 BREACHED  max-notional=within max-loss=breached  resting=2
   max-loss: unrealized -61.40 (loss 61.40) vs limit 50
-  cancelled 2 resting order(s)
+  cancelled every resting order on this account (2 seen this tick)
 ```
 
 ## What it does, and what you learn from it
@@ -48,10 +48,22 @@ and leaves it to a human.
 future dropped at an await point stops mid-request, with no unwinding and no
 completion. Wrapping the cancel in a `select!` against a shutdown signal — the
 obvious shape — makes Ctrl-C the thing that aborts the risk-reducing request. In
-this app `select!` wraps *only* the sleep; every request runs to completion,
-bounded by the client's own per-request timeout rather than by a signal. The
-cost is that Ctrl-C during a poll waits for that poll, which is bounded and the
-right trade. A second Ctrl-C exits at once and says what that can cost.
+this app `select!` wraps *only* the sleep; every request runs to completion
+rather than being cut short by a signal. A second Ctrl-C exits at once and says
+what that can cost.
+
+"Not interruptible" is only an acceptable trade if the wait is a number you can
+state, so the app derives it. A tick makes at most two sequential requests — the
+paired poll, then a cancel it may have triggered — each bounded by the 10s
+per-request timeout, giving a worst case of **20s**, which is what the shutdown
+message prints. That constant is computed from the timeout in `src/main.rs`
+rather than written down twice, and it is deliberately inside the 30s that
+Kubernetes' `terminationGracePeriodSeconds` defaults to, so a SIGTERM at the
+worst moment ends in a clean shutdown instead of a SIGKILL. Worth knowing why
+the arithmetic is that simple: the SDK's timeout bounds one *attempt*, and its
+unauthenticated public-data `GET` path retries — but every call this app makes is
+a signed one, and the SDK's signed helpers do not auto-retry, so here one call is
+one attempt.
 
 There is no other concurrency to get wrong, by design: the loop is strictly
 sequential — fetch, evaluate, act, sleep — so a tick cannot overlap the previous
@@ -62,7 +74,10 @@ being cancelled.
 
 ## Prerequisites
 
-- Rust 1.80+ (stable). Built and tested on 1.95.
+- Rust 1.86+ (stable). Built and tested on 1.95.
+  > `nexus-exchange` 0.9.1 declares `rust-version = "1.86"`, and the committed
+  > `Cargo.lock` is lockfile v4, so anything older fails `cargo build --locked`
+  > outright rather than degrading.
 - Testnet API credentials, created in the [Exchange app](https://exchange.nexus.xyz).
 
 ## Running it
@@ -82,6 +97,12 @@ cancel your resting orders:
 cargo run -- --arm
 ```
 
+`--arm` is the whole command line; `--help` prints it. Anything else is
+**refused** rather than ignored, because every near-miss for that one flag —
+`--armed`, `-arm`, `--arm=true` — would otherwise leave you believing the guard
+may act while it silently stays watch-only, and a guard you think is armed and
+is not is worse than no guard.
+
 ## Configuration
 
 Credentials are **required** — this app watches your account, so there is no
@@ -92,7 +113,7 @@ read from a committed file. See [`.env.example`](./.env.example).
 | --- | --- | --- |
 | `NEXUS_EXCHANGE_API_KEY` | yes | Testnet API key |
 | `NEXUS_EXCHANGE_API_SECRET` | yes | Paired secret, 32-byte hex |
-| `NEXUS_EXCHANGE_API_URL` | no | Override the base URL (a local stack, a preview deployment) |
+| `NEXUS_EXCHANGE_API_URL` | no | Override the base URL (a local stack, a preview deployment). Validated at startup |
 | `NEXUS_GUARD_MAX_NOTIONAL` | one of these | Cap on total position notional |
 | `NEXUS_GUARD_MAX_LOSS` | one of these | Cap on total unrealized loss, as a positive number |
 | `NEXUS_GUARD_MIN_AVAILABLE_MARGIN` | one of these | Floor on available margin |
@@ -116,7 +137,19 @@ any bytes leave the process, so this app does not re-implement that guard badly.
 Passing `NEXUS_EXCHANGE_API_URL` builds a `Network::Custom` with
 `Funds::Unknown`, because a bare URL cannot declare what the target moves.
 Undeclared stays undeclared; this app only reads and cancels, neither of which is
-funds-guarded, so `Unknown` costs nothing here and is the honest value.
+funds-guarded, so `Unknown` costs nothing here and is the honest value. The
+banner prints whatever the target's funds actually are — `play funds` for
+testnet, `funds not declared` for an override — and never asserts one over the
+other, which is the reason the SDK models funds as a tri-state in the first
+place.
+
+A `CustomNetwork` also needs a **label**, and it cannot be any label you like:
+the SDK namespaces stored credentials by it, so it refuses every built-in
+network's name and reserves the literal `"custom"` for the target its own
+deprecated `Config::with_base_url` builds. This app labels the override
+`api-url-override` after the variable it came from. Worth knowing if you copy
+this code: passing `"custom"` there fails at startup, and it fails for exactly
+the reader who needed the escape hatch.
 
 ## Pinned versions
 
@@ -132,8 +165,19 @@ rather than a silently-upgraded SDK.
 - Money is never a float. Position values arrive as decimals and stay in
   `rust_decimal::Decimal` end to end; a limit check is a comparison against a
   sum, which is exactly where binary floating point would decide the wrong way.
-- A failed poll is never read as a clean bill of health — it reports and retries
-  on the next tick.
+- A failed poll is never read as a clean bill of health — but "retry next tick"
+  is only right for a *transient* failure. A terminal one (revoked credentials
+  above all) fails identically forever, so the guard stops and exits with the
+  SDK's `sysexits.h` code — `77` `EX_NOPERM` for credentials, `65` otherwise.
+  Sitting there logging the same 401 every tick and still exiting `0` is the
+  worst failure this app could have: nothing restarts it, and nobody is told the
+  account is now unwatched.
+- `Unknown` is strict where it can hide exposure and nowhere else. A position
+  with no mark price makes the notional total unprovable — but a *flat* position
+  contributes `|size| × mark price = 0` whatever the mark is, so it is skipped.
+  Otherwise one dust position in an unmirrored market would pin `max-notional`
+  to `Unknown` on every tick from then on, and a limit that can never be proven
+  is a limit that never checks anything.
 - There is no "already fired" latch. The condition is *breached and orders
   exist*, so a successful cancel makes the next tick a no-op by itself, while an
   order placed during a still-live breach is caught on the tick after it appears.

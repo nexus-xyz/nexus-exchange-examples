@@ -110,7 +110,63 @@ fn interval() -> Result<Duration, ConfigError> {
     Ok(Duration::from_secs(seconds))
 }
 
-pub fn load(args: &[String]) -> Result<Config, ConfigError> {
+/// What `--help` prints. The whole interface is one flag, and saying so is
+/// cheaper than making a reader open `main.rs` to find that out.
+pub const USAGE: &str = "\
+risk-guard — watch one Nexus Exchange account against limits you set.
+
+Usage:
+  risk-guard [--arm]
+
+Options:
+  --arm        Let a breach cancel every resting order on this account.
+               Without it the guard is watch-only and changes nothing.
+  -h, --help   Print this and exit.
+
+Credentials and limits come from the environment; at least one limit is
+required. See .env.example for every variable and its meaning.";
+
+/// The outcome of reading the command line and the environment.
+pub enum Startup {
+    Run(Config),
+    /// `--help` was asked for: print [`USAGE`] and exit successfully.
+    Usage,
+}
+
+/// Read the argument list, `--help` already handled, and return whether the
+/// guard is armed. One flag is understood; anything else is refused.
+///
+/// Ignoring an unrecognised argument is the dangerous default here, because the
+/// near-misses for the one flag that matters all look plausible: `--armed`,
+/// `-arm`, `--arm=true` would each leave an operator believing the guard may
+/// act, with a startup banner that agrees with them, while it silently stays
+/// watch-only. A guard you think is armed and is not is worse than no guard, so
+/// this refuses instead — before any credential is read or any request is sent.
+fn parse_args(args: &[String]) -> Result<bool, ConfigError> {
+    let mut armed = false;
+    for arg in args {
+        match arg.as_str() {
+            "--arm" => armed = true,
+            other => {
+                return Err(ConfigError(format!(
+                    "unrecognised argument {other:?}.\n\n{USAGE}"
+                )))
+            }
+        }
+    }
+    Ok(armed)
+}
+
+pub fn load(args: &[String]) -> Result<Startup, ConfigError> {
+    // Help wins over everything, including a bad argument alongside it: someone
+    // asking what the flags are should be told, not corrected.
+    if args.iter().any(|arg| arg == "-h" || arg == "--help") {
+        return Ok(Startup::Usage);
+    }
+    // Refused before credentials are touched: a typo'd flag should not need a
+    // key in the environment to be reported.
+    let armed = parse_args(args)?;
+
     // Half a credential pair is always a mistake — a typo'd variable name, a
     // shell that only exported one — and left alone it surfaces as an opaque
     // 401 long after the cause.
@@ -144,12 +200,12 @@ pub fn load(args: &[String]) -> Result<Config, ConfigError> {
         ));
     }
 
-    Ok(Config {
+    Ok(Startup::Run(Config {
         api_key,
         api_secret,
         base_url: var("NEXUS_EXCHANGE_API_URL"),
         limits,
         interval: interval()?,
-        armed: args.iter().any(|arg| arg == "--arm"),
-    })
+        armed,
+    }))
 }

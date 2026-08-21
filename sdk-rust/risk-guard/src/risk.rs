@@ -61,13 +61,26 @@ impl Verdict {
 /// Total notional across open positions.
 ///
 /// Returns `Err` with the offending markets — not a partial sum — when any
-/// position cannot report its notional. A partial sum is the dangerous answer:
-/// it is smaller than the truth and therefore likelier to sit under the limit.
-/// Either every position counts or the total is unknown.
+/// position that could contribute cannot report its notional. A partial sum is
+/// the dangerous answer: it is smaller than the truth and therefore likelier to
+/// sit under the limit. Either every position counts or the total is unknown.
+///
+/// The one exception is a position with zero size, and it is not a softening of
+/// that rule. `notional_value` is defined as `|size| × mark price`, so a flat
+/// position contributes provably nothing whatever the mark price is, and its
+/// missing mark price says nothing about the account's exposure. Without this,
+/// a single flat or dust position in a market the indexer has stopped mirroring
+/// would pin `max-notional` to `Unknown` on every tick from then on — and a
+/// limit that is permanently unprovable is a limit that never checks anything,
+/// including the genuine breach happening elsewhere in the account. Strictness
+/// is kept exactly where it can hide exposure.
 fn total_notional(positions: &[Position]) -> Result<Decimal, Vec<String>> {
     let mut total = Decimal::ZERO;
     let mut missing = Vec::new();
     for position in positions {
+        if position.size.is_zero() {
+            continue;
+        }
         match position.notional_value {
             Some(value) => total += value,
             None => {
