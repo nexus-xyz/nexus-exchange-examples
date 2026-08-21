@@ -3,11 +3,11 @@
 An agent-shaped risk review of one Nexus Exchange account, over the **MCP tool
 surface**.
 
-It performs the same check as [`sdk-rust/risk-guard`](../../sdk-rust/risk-guard)
-and [`sdk-ts/risk-guard`](../../sdk-ts/risk-guard) — total notional, unrealized
-loss, available margin, against limits you set — but reaches the exchange through
-MCP tools rather than a typed SDK. It is read-only: it reports, and changes
-nothing.
+It performs the same check as the `risk-guard` examples under
+[`sdk-rust/`](../../sdk-rust) and [`sdk-ts/`](../../sdk-ts) — total notional,
+unrealized loss, available margin, against limits you set — but reaches the
+exchange through MCP tools rather than a typed SDK. It is read-only: it reports,
+and changes nothing.
 
 > [!IMPORTANT]
 > **This example does not run yet.** The three account tools it needs are
