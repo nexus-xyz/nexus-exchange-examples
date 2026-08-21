@@ -67,7 +67,9 @@ don't ship a client for.
 
 Apps built by scripting [`nexus-exchange-cli`](https://github.com/nexus-xyz/nexus-exchange-cli).
 
-_None yet._
+| Example | What it shows |
+| --- | --- |
+| [`quote-ladder/`](./cli/quote-ladder) | A ladder of resting post-only orders, kept on one market by a script you can put in a crontab: a reconciler over the CLI, idempotent through derived client order ids, with exact decimal money arithmetic in bash and a single-writer lock. |
 
 ### Track 4 — [`analytics/`](./analytics) · market-data and history tools
 
