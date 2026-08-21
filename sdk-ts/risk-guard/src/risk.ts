@@ -20,8 +20,21 @@
 // So a limit whose inputs are incomplete reports `unknown`, never `within`, and
 // the caller is required to treat that as "cannot prove safe" rather than
 // "safe". `unknown` does not fire the guard either: acting on data we do not
-// trust is its own failure mode. It reports loudly, and it refuses to *clear* a
-// breach that already fired.
+// trust is its own failure mode. It reports loudly and leaves the call to a
+// human. (`evaluate` is stateless, so it has no memory of a previous tick and
+// no latch to clear — see the note on that in the README.)
+//
+// `unknown` is not a licence to stop reasoning
+// -------------------------------------------
+// It is the answer when the missing inputs *could change the outcome*, and only
+// then. `notional_value` is `|size| × mark price`, so it is never negative,
+// which makes a partial sum a **lower bound** on the true total. If that bound
+// already exceeds the limit, no missing value can bring it back under, and the
+// breach is proven — reporting `unknown` there would be the mirror image of the
+// bug this module exists to avoid: refusing to act on a fact the app already
+// has, at exactly the moment it matters. A flat position is the same argument
+// run the other way: at `size == 0` the notional is provably zero whatever the
+// mark price is, so a missing mark on a flat position says nothing at all.
 
 import type { Position } from "@nexus-xyz/exchange-ts";
 
@@ -52,17 +65,31 @@ export interface Snapshot {
 /**
  * Total notional across open positions.
  *
- * Returns `null` — not a partial sum — when any position cannot report its
- * notional. A partial sum is the dangerous answer: it is smaller than the truth
- * and therefore likelier to sit under the limit. Either every position counts
- * or the total is unknown.
+ * When every position reports, the answer is exact. When some do not, the
+ * caller gets the sum of the ones that did — labelled `atLeast`, because that
+ * is what it is — together with the markets that are missing. It is never a
+ * partial sum passed off as a total: that is the dangerous answer, since it is
+ * smaller than the truth and therefore likelier to sit under a limit.
+ *
+ * A lower bound is still worth having, though, and `atLeast` is genuinely one:
+ * `notional_value` is `|size| × mark price` and so is never negative, so no
+ * missing position can *reduce* the total. `evaluate` uses that to prove a
+ * breach it would otherwise have to call unknown.
+ *
+ * Positions with zero size are skipped rather than counted as missing. Their
+ * notional is `|0| × mark price = 0` whatever the mark price is, so a flat or
+ * dust position in a market the indexer has stopped mirroring tells us nothing
+ * about exposure — and treating it as missing would make `max-notional`
+ * unprovable on every tick from then on, which is a limit that never checks
+ * anything.
  */
 function totalNotional(
   positions: readonly Position[],
-): { total: dec.Dec } | { missing: string[] } {
+): { total: dec.Dec } | { atLeast: dec.Dec; missing: string[] } {
   const missing: string[] = [];
   let total = dec.ZERO;
   for (const position of positions) {
+    if (dec.compare(dec.parse(position.size), dec.ZERO) === 0) continue;
     const raw = position.notional_value;
     if (raw === null || raw === undefined) {
       // The paired `*_error` field names the reason; surfacing it is the
@@ -74,7 +101,7 @@ function totalNotional(
     }
     total = dec.add(total, dec.parse(raw));
   }
-  return missing.length > 0 ? { missing } : { total };
+  return missing.length > 0 ? { atLeast: total, missing } : { total };
 }
 
 /** Total unrealized PnL. Non-nullable in the API, so this is always exact. */
@@ -92,13 +119,33 @@ export function evaluate(snapshot: Snapshot, limits: Limits): Verdict {
   if (limits.maxNotional !== null) {
     const notional = totalNotional(snapshot.positions);
     if ("missing" in notional) {
-      findings.push({
-        limit: "max-notional",
-        state: "unknown",
-        detail:
-          `cannot total notional — no mark price for ${notional.missing.join(", ")}. ` +
-          "Treating exposure as unproven rather than as zero.",
-      });
+      const cap = limits.maxNotional;
+      const absent = notional.missing.join(", ");
+      // The bound is a real fact even though the total is not. Over the limit
+      // already means the breach cannot be undone by whatever is missing, so
+      // this is `breached` — the guard should act on what it can prove. Under
+      // the limit is the genuine `unknown`: the missing values could still land
+      // either side of it, and this app does not act on data it cannot trust.
+      findings.push(
+        dec.compare(notional.atLeast, cap) > 0
+          ? {
+              limit: "max-notional",
+              state: "breached",
+              detail:
+                `notional is at least ${dec.format(notional.atLeast)} vs limit ` +
+                `${dec.format(cap)} — already over on the positions that do ` +
+                `report, so no mark price for ${absent} can bring it back under.`,
+            }
+          : {
+              limit: "max-notional",
+              state: "unknown",
+              detail:
+                `cannot total notional — no mark price for ${absent}. Counted ` +
+                `${dec.format(notional.atLeast)} so far, which is not over the ` +
+                `limit of ${dec.format(cap)}, so the true total could fall either ` +
+                "side. Treating exposure as unproven rather than as zero.",
+            },
+      );
     } else {
       const over = dec.compare(notional.total, limits.maxNotional) > 0;
       findings.push({
