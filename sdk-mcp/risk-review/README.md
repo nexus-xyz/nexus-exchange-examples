@@ -9,14 +9,6 @@ unrealized loss, available margin, against limits you set — but reaches the
 exchange through MCP tools rather than a typed SDK. It is read-only: it reports,
 and changes nothing.
 
-> [!IMPORTANT]
-> **This example does not run yet.** The three account tools it needs are
-> unreachable on `@nexus-xyz/exchange-mcp` 0.2.0. The fix is
-> [nexus-exchange-mcp#69](https://github.com/nexus-xyz/nexus-exchange-mcp/pull/69),
-> which is **not merged and not released** — see
-> [Blocked on the MCP server](#blocked-on-the-mcp-server). Everything up to the
-> API call works today.
-
 ```text
 risk-review on the testnet deployment (play funds)
 tool surface: 63 tools offered, 16 of them mutating — this review uses 3,
@@ -93,60 +85,38 @@ Exit code is `0` when every limit is within range, `2` on a breach, and `1` on a
 configuration or protocol error — so it is usable from cron without parsing
 stdout.
 
-## Blocked on the MCP server
+## Which deployment it talks to
 
-**The three account tools this review needs cannot reach the live testnet
-deployment on `@nexus-xyz/exchange-mcp` 0.2.0.** The server composes `/api/v1/*`
-against the bare host root, which serves the marketing frontend:
+**Testnet — play funds.** The network is named explicitly rather than left to a
+default, and the review's first line says which target and what its funds are, so
+nobody has to guess whose money is being read.
+
+`NEXUS_EXCHANGE_API_URL` points the server at another deployment. Pass the
+**deployment base** (`https://<host>/api/exchange` on a gatewayed host, or a bare
+origin for an indexer serving at its root); the server composes both REST
+surfaces under it and adds `/api/v1` itself.
+
+That last sentence is the whole reason this example needs
+`@nexus-xyz/exchange-mcp` **0.3.0 or newer**, and it is worth knowing if you
+build on an older pin. Through 0.2.0 the server composed `/api/v1/*` against the
+bare host root, which on the public deployment serves the marketing frontend:
 
 ```
-GET https://exchange.nexus.xyz/api/v1/markets/summary               -> 404 text/html
-GET https://exchange.nexus.xyz/api/exchange/api/v1/markets/summary  -> 200 application/json
+GET https://exchange.nexus.xyz/api/v1/account               -> 404 text/html        (Next.js frontend)
+GET https://exchange.nexus.xyz/api/exchange/api/v1/account  -> 401 application/json (auth reached)
 ```
 
-`deriveBases()` strips a trailing `/api/exchange` from `NEXUS_EXCHANGE_API_URL`
-before building v1 URLs, so no value of that variable reaches the working path
-either. The split is visible from outside: gateway-surface tools such as
-`get_service_status` succeed while `list_markets` and `get_tickers` 404.
-
-The fix is
-[**nexus-exchange-mcp#69**](https://github.com/nexus-xyz/nexus-exchange-mcp/pull/69)
-— "compose the v1 surface under the deployment base, not the host root", the same
-model [`nexus-exchange-ts#65`](https://github.com/nexus-xyz/nexus-exchange-ts/pull/65)
-adopted for the TypeScript SDK. As of this writing it is **open, not merged, and
-therefore not released**.
-
-Two things have to happen before this example runs:
-
-1. **#69 merges**, and
-2. **a version carrying it is published to npm.** A merged fix is not an
-   installable one — this example pins an exact version from the registry, and
-   `npm ci` installs from the lockfile. There is no git-install fallback either:
-   the package builds via `prepack`, not `prepare`, and ships only `dist`, so a
-   git dependency resolves to an empty package.
-
-### When that release lands, this example must be updated
-
-Not just re-pinned — **#69 is a breaking change** (`fix!:`), so treat this as a
-real update rather than a version bump:
-
-- [ ] Bump `@nexus-xyz/exchange-mcp` in `package.json` to the released version
-      and re-commit `package-lock.json`.
-- [ ] Update the pinned version stated in prose under
-      [Pinned versions](#pinned-versions) — CONTRIBUTING requires the README's
-      prose and the manifest to agree, and a bumped manifest with a stale README
-      is the pin quietly telling the reader something untrue.
-- [ ] Re-read #69's final diff for anything that moved: it rewrites
-      `src/config.ts`, and if `NEXUS_EXCHANGE_API_URL` or
-      `NEXUS_EXCHANGE_GATEWAY_PATH` semantics changed, `src/mcp.ts` builds the
-      server's environment explicitly and must change with them.
-- [ ] Re-check the tool counts quoted in this README and in `src/mcp.ts` (63
-      offered / 16 mutating). They are asserted in prose, not in code, so a
-      server that adds a tool makes them wrong silently.
-- [ ] Run it end to end against live testnet with real credentials and confirm a
-      real breach — #69 itself notes no signed call has been verified with real
-      keys, so this example would be the first thing to confirm it.
-- [ ] Delete this section and the `[!IMPORTANT]` note at the top.
+Every authenticated tool — including the three this review uses — was therefore
+unreachable, while the 28 gateway-surface tools composed correctly and worked.
+That split is what made it survive: `get_service_status` answered while
+`get_balance` returned a web page.
+[nexus-exchange-mcp#69](https://github.com/nexus-xyz/nexus-exchange-mcp/pull/69)
+fixed it by hanging **both** surfaces off one deployment base — the base names
+the deployment, the path names the surface — the same model
+[`nexus-exchange-ts#65`](https://github.com/nexus-xyz/nexus-exchange-ts/pull/65)
+adopted for the TypeScript SDK. Signing was never affected: the HMAC covers the
+logical path (`/api/v1/account`), never the deployment prefix, because the
+gateway strips its own prefix before the indexer verifies.
 
 ## Using it from Claude
 
@@ -181,7 +151,7 @@ by it.
 | --- | --- | --- |
 | `NEXUS_EXCHANGE_API_KEY` | yes | Testnet API key |
 | `NEXUS_EXCHANGE_API_SECRET` | yes | Paired secret, 32-byte hex |
-| `NEXUS_EXCHANGE_API_URL` | no | Point the server at another deployment |
+| `NEXUS_EXCHANGE_API_URL` | no | Point the server at another deployment — the deployment base, not the `/api/v1` path ([details](#which-deployment-it-talks-to)) |
 | `NEXUS_GUARD_MAX_NOTIONAL` | one of these | Cap on total position notional |
 | `NEXUS_GUARD_MAX_LOSS` | one of these | Cap on total unrealized loss, as a positive number |
 | `NEXUS_GUARD_MIN_AVAILABLE_MARGIN` | one of these | Floor on available margin |
@@ -192,7 +162,31 @@ rather than guessed at.
 
 ## Pinned versions
 
-Pinned to **`@nexus-xyz/exchange-mcp` 0.2.0** and
+Pinned to **`@nexus-xyz/exchange-mcp` 0.3.0** and
 **`@modelcontextprotocol/sdk` 1.30.0**, exact versions with `package-lock.json`
-committed. The exchange-mcp pin is the one that changes when #69 ships — see
-[above](#when-that-release-lands-this-example-must-be-updated).
+committed.
+
+0.3.0 is a floor, not just a pin: on 0.2.0 every authenticated tool this review
+calls returned the marketing site's 404 rather than data. Do not pin this example
+back — see [Which deployment it talks to](#which-deployment-it-talks-to).
+
+## Notes
+
+- It is an example, not production-hardened code. It reviews one account, keeps
+  no state between runs, and has no alerting beyond stdout and the exit code.
+- **Not verified: a signed call with real credentials.** The routing is
+  confirmed — unauthenticated, `…/api/exchange/api/v1/account` answers `401`
+  `application/json`, where 0.2.0 got a `404` HTML page from the marketing app —
+  but confirming that a *valid* HMAC is accepted needs testnet keys, which this
+  example was written without. It is worth stating rather than implying, because
+  an invalid signature is answered by an edge proxy with an HTML `403`, and at
+  that layer a rejected signature and a routing fault look identical. The
+  upstream fix shipped with the same caveat.
+- Money is never a float. Values arrive as decimal strings and are parsed by
+  `src/decimal.ts` onto `BigInt`; a limit check is a comparison against a sum,
+  which is exactly where binary floating point would decide the wrong way.
+- A limit has three outcomes, not two: `unknown` never counts as safe, and a
+  failed read is never allowed to read as "no exposure".
+- The tool counts in this README (63 offered, 16 mutating) are prose, not
+  assertions in code, so a server release that adds a tool makes them stale
+  silently. They are re-checked on every version bump.

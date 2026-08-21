@@ -54,8 +54,35 @@ export const ALLOWED_TOOLS = [
 
 export type AllowedTool = (typeof ALLOWED_TOOLS)[number];
 
+/**
+ * Label for a `NEXUS_EXCHANGE_API_URL` target.
+ *
+ * Required by the server since 0.3.0 and given no default there, because the
+ * label names the stage in diagnostics and is what sibling clients key stored
+ * credentials on. Named after the variable it came from rather than something
+ * invented, so a log line says where the target was chosen.
+ */
+const OVERRIDE_LABEL = "api-url-override";
+
 /** Tool-name prefixes that only ever read. Used to describe what we skipped. */
 const READ_ONLY_PREFIXES = ["get_", "list_", "preview_"];
+
+/**
+ * Collapse a tool's error detail to one bounded line.
+ *
+ * A tool failure carries the upstream body through verbatim, and that body is
+ * not always the structured error you would hope for: point this at a host whose
+ * root serves a web app and the "detail" is a full HTML document, which then
+ * takes over the terminal and buries the one line that said which tool failed.
+ * Seen for real — an edge proxy answers an invalid signature with an HTML 403.
+ *
+ * Truncating an error feels wrong until you notice the alternative is losing it
+ * in its own noise. The same guard exists in both sibling `risk-guard` examples.
+ */
+function oneLine(detail: string): string {
+  const flat = detail.replace(/\s+/g, " ").trim();
+  return flat.length > 200 ? `${flat.slice(0, 200)}…` : flat;
+}
 
 export interface ToolSurface {
   readonly total: number;
@@ -88,7 +115,25 @@ export class Session {
         NEXUS_EXCHANGE_API_KEY: config.apiKey,
         NEXUS_EXCHANGE_API_SECRET: config.apiSecret,
         NEXUS_EXCHANGE_NETWORK: config.network,
-        ...(config.baseUrl ? { NEXUS_EXCHANGE_API_URL: config.baseUrl } : {}),
+        // An override is a *declared* target, not a bare URL. Since 0.3.0 the
+        // server requires a label and a funds classification alongside
+        // `custom`, and refuses rather than defaulting either — for the same
+        // reason its Rust and TypeScript siblings require them: assuming "play"
+        // would make every money guardrail lie in the direction that costs
+        // money, and a URL on its own cannot say whose money is behind it.
+        //
+        // `unknown` is the honest answer here and it costs nothing, because
+        // this review only reads. Passing the URL *without* naming the network
+        // would also work — the server treats that as label `custom`, funds
+        // `unknown` — but that form is deprecated in 0.3.0 and prints a notice,
+        // and it is the wrong lesson to teach: describe the target.
+        ...(config.baseUrl
+          ? {
+              NEXUS_EXCHANGE_API_URL: config.baseUrl,
+              NEXUS_EXCHANGE_NETWORK_LABEL: OVERRIDE_LABEL,
+              NEXUS_EXCHANGE_FUNDS: "unknown",
+            }
+          : {}),
       },
       // The server logs to stderr; let it through so a reader can see why a
       // handshake failed instead of getting silence.
@@ -143,7 +188,10 @@ export class Session {
     // an otherwise successful response. Treating it as success is how a failed
     // read becomes an empty position list — which would read as "no exposure".
     if ((result as { isError?: unknown }).isError === true) {
-      throw new McpError(`${tool} failed: ${firstText(result) ?? "no detail given"}`);
+      const detail = firstText(result);
+      throw new McpError(
+        `${tool} failed: ${detail === null ? "no detail given" : oneLine(detail)}`,
+      );
     }
 
     const text = firstText(result);
