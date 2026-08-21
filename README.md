@@ -60,7 +60,7 @@ don't ship a client for.
 | --- | --- | --- |
 | Rust | [`sdk-rust/`](./sdk-rust) | _None yet._ |
 | TypeScript | [`sdk-ts/`](./sdk-ts) | _None yet._ |
-| Python | [`sdk-python/`](./sdk-python) | _None yet._ |
+| Python | [`sdk-python/`](./sdk-python) | [`risk-guard/`](./sdk-python/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
 | MCP | [`sdk-mcp/`](./sdk-mcp) | _None yet._ |
 
 ### Track 3 — [`cli/`](./cli) · CLI-driven workflows
