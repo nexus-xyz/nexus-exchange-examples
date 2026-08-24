@@ -63,6 +63,17 @@ missing notional as zero would report "under the limit" at the exact moment the
 app has no idea what the exposure is. So `src/risk.ts` reports `within`,
 `breached` or `unknown`, and `unknown` never counts as safe.
 
+**But `unknown` is not a licence to stop reasoning.** `notional_value` is
+`|size| × mark price`, so it is never negative and a partial sum is a *lower
+bound* on the true total. A bound already over the limit is a **proven** breach —
+nothing missing can bring it back under — so it is reported as `breached`, with
+the wording saying "at least". `unknown` is kept for the bound that could still
+land either side. The same argument covers a flat position: at `size == 0` the
+notional is provably zero whatever the mark price is, so it is skipped rather
+than counted as missing, which stops one stale dust position pinning
+`max-notional` to `unknown` forever. Refusing to act on a fact the app already
+has is the mirror image of the bug the third outcome exists to prevent.
+
 There is no model in the loop, on purpose: an LLM in the middle would make the
 output non-reproducible, need a second API key, and obscure the part worth
 reading. See [Using it from Claude](#using-it-from-claude) for the actual agent
@@ -186,7 +197,9 @@ back — see [Which deployment it talks to](#which-deployment-it-talks-to).
   `src/decimal.ts` onto `BigInt`; a limit check is a comparison against a sum,
   which is exactly where binary floating point would decide the wrong way.
 - A limit has three outcomes, not two: `unknown` never counts as safe, and a
-  failed read is never allowed to read as "no exposure".
+  failed read is never allowed to read as "no exposure". `unknown` is also not a
+  licence to stop reasoning — a partial notional sum is a lower bound, so a bound
+  already over the limit reports `breached`, not `unknown`.
 - The tool counts in this README (63 offered, 16 mutating) are prose, not
   assertions in code, so a server release that adds a tool makes them stale
   silently. They are re-checked on every version bump.

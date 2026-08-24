@@ -87,6 +87,11 @@ export function isNegative(value: Dec): boolean {
   return value.units < 0n;
 }
 
+/** Exactly zero, at any scale — `0`, `0.0` and `-0.000` are all zero. */
+export function isZero(value: Dec): boolean {
+  return value.units === 0n;
+}
+
 /** Render as a plain decimal string — never scientific notation. */
 export function format(value: Dec): string {
   const negative = value.units < 0n;

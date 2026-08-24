@@ -110,6 +110,11 @@ function toPosition(row: Record<string, unknown>): PositionView {
   const notional = optionalDecimal(row, "notional_value");
   return {
     marketId: requireString(row, "market_id", "get_positions"),
+    // Required, not optional, and deliberately so: `size` is what lets the
+    // review prove a flat position contributes zero notional even when its mark
+    // price is missing. Reading it as absent would quietly turn that proof off,
+    // so a payload without it fails loudly instead.
+    size: requireString(row, "size", "get_positions"),
     notional: notional.value,
     notionalError: notional.error,
     unrealizedPnl: requireString(row, "unrealized_pnl", "get_positions"),
