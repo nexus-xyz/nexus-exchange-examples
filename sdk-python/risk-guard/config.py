@@ -32,15 +32,21 @@ required. See .env.example for every variable and its meaning.\
 """
 
 #: Plain decimals only: no exponents, no `nan`/`inf`, no thousands separators,
-#: no underscores. Every one of those has a plausible-looking reading that
-#: `Decimal()` will happily accept -- `Decimal("1e5")` is 100000, `Decimal("nan")`
-#: is a NaN that compares false against everything -- and this value decides
+#: no underscores, no non-ASCII digits. Every one of those has a
+#: plausible-looking reading that `Decimal()` will happily accept --
+#: `Decimal("1e5")` is 100000, `Decimal("nan")` is a NaN that compares false
+#: against everything, `Decimal("١٠٠٠")` is 1000 -- and this value decides
 #: whether the guard fires. So the shape is checked before the parse, not after.
-_PLAIN_DECIMAL = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
+#:
+#: `[0-9]` and not `\d`, which in Python matches every Unicode decimal digit:
+#: `\d` would let `١٠٠٠` through, and a limit nobody can read back in the shell
+#: they typed it into is a limit nobody can check. It also makes this the same
+#: expression the Rust and TypeScript siblings use, where `\d` is ASCII already.
+_PLAIN_DECIMAL = re.compile(r"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$")
 
 #: Whole seconds, and nothing else. Same reasoning as above: `int()` accepts
 #: underscores (`1_000`) and unicode digits, and neither is what the author meant.
-_WHOLE_SECONDS = re.compile(r"^\d+$")
+_WHOLE_SECONDS = re.compile(r"^[0-9]+$")
 
 
 class ConfigError(Exception):
@@ -107,6 +113,12 @@ def _limit(name: str) -> Decimal | None:
     try:
         value = Decimal(raw)
     except InvalidOperation as exc:  # pragma: no cover - the regex precedes it
+        # Unreachable, and now provably so: every string `_PLAIN_DECIMAL` accepts
+        # is ASCII digits with at most one dot and an optional sign, which
+        # `Decimal` parses without complaint. Kept anyway, because the guarantee
+        # lives in a regex three screens up, and a limit that fell through to a
+        # raw `InvalidOperation` would be reported as a crash rather than as the
+        # configuration error it is.
         raise ConfigError(f"{name} is not a usable decimal: {raw!r}") from exc
     if value <= 0:
         raise ConfigError(f"{name} must be greater than zero, got {raw}")

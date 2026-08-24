@@ -53,6 +53,7 @@ from nexus_exchange import (
     Funds,
     MissingCredentialsError,
     Network,
+    NetworkConfig,
     NexusExchangeError,
     Order,
 )
@@ -79,11 +80,31 @@ REQUEST_TIMEOUT_SECONDS = 5.0
 #: Kubernetes' `terminationGracePeriodSeconds` defaults to.
 MAX_SHUTDOWN_WAIT_SECONDS = 3 * REQUEST_TIMEOUT_SECONDS
 
+#: Label for a `NEXUS_EXCHANGE_API_URL` target.
+#:
+#: Required by `NetworkConfig.custom` and given no default there, because the
+#: label names the stage in diagnostics and is the key sibling clients namespace
+#: stored credentials under. Named after the variable it came from rather than
+#: something invented, so anyone reading it can tell where the target was chosen
+#: -- the same label `sdk-mcp/risk-review` gives the same override.
+OVERRIDE_LABEL = "api-url-override"
+
 #: `sysexits.h` codes, matching the Rust and TypeScript siblings so a supervisor
 #: sees the same number whichever one it is running.
 EX_DATAERR = 65
 EX_NOPERM = 77
-EX_SIGINT = 130
+
+
+def signal_exit_code(signum: int) -> int:
+    """The shell's `128 + signum` code for "killed by a signal".
+
+    Not a `sysexits.h` code and not a constant: SIGINT gives 130, SIGTERM 143.
+    Derived from the signal actually received rather than fixed at 130, because
+    the forced-exit path is reachable by either, and telling a supervisor that a
+    double SIGTERM was a Ctrl-C is the kind of small lie that costs someone an
+    hour of looking in the wrong place.
+    """
+    return 128 + signum
 
 
 class Fatal(Exception):
@@ -204,10 +225,21 @@ def build_client(config: Config) -> Client:
     supplied. Measured against a local server: both forms send to the override,
     and only one of them tells the truth about it afterwards.
 
-    Passing ``base_url`` *alone* yields ``label='custom'`` and
-    ``funds=UNKNOWN``, which is the honest classification, so that is the form
-    used here. This app only reads and cancels -- neither is funds-guarded -- so
-    ``UNKNOWN`` costs nothing and says exactly what is known.
+    So the override has to arrive as a *described* target rather than a bare URL,
+    and it is spelled out with :meth:`NetworkConfig.custom`. A lone ``base_url=``
+    resolves to the same thing -- the SDK builds exactly this config from it --
+    but that selector is deprecated (ENG-10955) and an example should not teach a
+    form that is scheduled to warn and then disappear. Writing it out is also the
+    better lesson: the funds classification becomes something this app states
+    rather than something it inherits from a helper.
+
+    ``funds=UNKNOWN`` is the honest answer and it costs nothing here, because a
+    URL on its own says nothing about whose money is behind it and this app only
+    reads and cancels -- neither is funds-guarded. ``has_faucet`` stays ``False``
+    for the same reason: a faucet is a property of the deployment, and this app
+    has not been told. ``direct_base_url`` is left to fall back to ``base_url``,
+    which is what a single override has always meant; a deployment that keeps the
+    gateway/direct split is the case that has to name both.
     """
     if config.base_url is None:
         return Client(
@@ -217,7 +249,11 @@ def build_client(config: Config) -> Client:
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
     return Client(
-        base_url=config.base_url,
+        NetworkConfig.custom(
+            label=OVERRIDE_LABEL,
+            funds=Funds.UNKNOWN,
+            base_url=config.base_url,
+        ),
         api_key=config.api_key,
         api_secret=config.api_secret,
         timeout=REQUEST_TIMEOUT_SECONDS,
@@ -269,7 +305,7 @@ class Shutdown:
             # block on the very request they are trying to escape.
             sys.stderr.write("forcing exit — a cancel may still have been in flight\n")
             sys.stderr.flush()
-            os._exit(EX_SIGINT)
+            os._exit(signal_exit_code(signum))
         self._event.set()
         sys.stderr.write(
             f"shutting down — finishing the current check "

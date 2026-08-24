@@ -102,10 +102,15 @@ of the distinction is that a revoked credential still stops the guard.
 `Client(Network.TESTNET, base_url=...)` routes requests at your override — but
 `client.network` keeps the testnet descriptor, so the client goes on reporting
 `label='Testnet'` and `funds=PLAY` for a host you supplied. Printing "play funds"
-over an undeclared target is the one lie a risk tool must not tell. Passing
-`base_url` **alone** yields `label='custom'` and `funds=UNKNOWN`, which is
-honest, so that is what `build_client` does. Both forms send to the same place;
-only one of them tells the truth about it afterwards.
+over an undeclared target is the one lie a risk tool must not tell. Both forms
+send to the same place; only one of them tells the truth about it afterwards.
+
+So `build_client` declares the target instead, with
+`NetworkConfig.custom(label=..., funds=Funds.UNKNOWN, base_url=...)`. A lone
+`base_url=` resolves to exactly that config and would do — but it is the
+deprecated selector (ENG-10955), and it makes the funds classification something
+the app inherits rather than something it states. Spelling it out is the same
+shape [`sdk-mcp/risk-review`](../../sdk-mcp) uses for the same override.
 
 ## Prerequisites
 
@@ -144,15 +149,16 @@ is not is worse than no guard.
 python -m unittest -q
 ```
 
-41 tests, no network and no credentials. Most are table-driven over `risk.py`,
+44 tests, no network and no credentials. Most are table-driven over `risk.py`,
 which is pure. The rest run the real SDK against a **real HTTP server on the
 loopback interface** rather than a mock — a mock of an SDK only proves the mock
 matches the test's idea of it, while a socket proves the SDK composes the URL,
 signs the request and decodes the body the way this app assumes. Both SDK traps
 above were found that way.
 
-CI does not run these (the Python recipe is `pip install`, `compileall`, `mypy`),
-so they are for the reader.
+CI runs them: the Python recipe ends with `unittest discover`, so a version bump
+that undoes either trap fails the gate rather than only failing for whoever
+happens to run the suite locally.
 
 ## Configuration
 
@@ -174,12 +180,12 @@ At least one limit must be set. A guard with no limits would print reassuring
 output forever while checking nothing, so it refuses to start instead.
 
 Limits are parsed as exact decimals and must be greater than zero. Plain decimals
-only: `1e5`, `nan`, `inf`, `1,000` and `1_000` are all refused rather than
-guessed at, because `Decimal()` accepts every one of them with a
+only: `1e5`, `nan`, `inf`, `1,000`, `1_000` and `١٠٠٠` are all refused rather
+than guessed at, because `Decimal()` accepts every one of them with a
 plausible-looking reading — `Decimal("nan")` compares false against everything,
-which would make a limit that never fires — and this value decides whether the
-guard fires. The poll interval is held to the same standard and bounded at both
-ends.
+which would make a limit that never fires, and `Decimal("١٠٠٠")` is 1000 in a
+form nobody can check by eye — and this value decides whether the guard fires.
+The poll interval is held to the same standard and bounded at both ends.
 
 ## Which deployment it talks to
 
@@ -211,8 +217,10 @@ different bytes than this README describes.
   no state across restarts, and has no alerting beyond stdout and the exit code.
 - Exit codes follow `sysexits.h`, matching the siblings so a supervisor sees the
   same number whichever one it runs: `0` clean shutdown, `77` `EX_NOPERM` for
-  credentials, `65` `EX_DATAERR` for another terminal failure, `130` for a forced
-  exit, `1` for a configuration error.
+  credentials, `65` `EX_DATAERR` for another terminal failure, `1` for a
+  configuration error. A second signal forces the exit and reports itself the way
+  a shell does, `128 + signum` — so `130` for Ctrl-C and `143` for a second
+  SIGTERM, rather than one number standing in for both.
 - A failed poll is never read as a clean bill of health — but "retry next tick"
   is only right for a *transient* failure. A terminal one fails identically
   forever, so the guard stops rather than sitting there logging the same 401 and

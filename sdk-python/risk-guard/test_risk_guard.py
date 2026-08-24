@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import threading
 import unittest
 from decimal import Decimal
@@ -239,6 +240,26 @@ class ConfigRules(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ConfigError):
                 config.load([])
 
+    def test_non_ascii_digits_are_refused(self) -> None:
+        """`Decimal` reads these; a person reading the shell history does not.
+
+        `\\d` in a Python regex matches every Unicode decimal digit, so this is
+        the case where the pattern has to say `[0-9]` to mean what the comment
+        beside it claims. `Decimal("١٠٠٠")` is 1000 and `int("١٠٠٠")` is 1000, so
+        without the narrower class both a limit and an interval would be accepted
+        in a form nobody can check by eye.
+        """
+        self.credentials()
+        for value in ("١٠٠٠", "1٠٠", "𝟣𝟢"):
+            os.environ["NEXUS_GUARD_MAX_LOSS"] = value
+            with self.subTest(limit=value), self.assertRaises(ConfigError):
+                config.load([])
+        os.environ["NEXUS_GUARD_MAX_LOSS"] = "50"
+        for value in ("١٠", "1٠"):
+            os.environ["NEXUS_GUARD_INTERVAL_SECONDS"] = value
+            with self.subTest(interval=value), self.assertRaises(ConfigError):
+                config.load([])
+
     def test_limits_must_be_positive(self) -> None:
         self.credentials()
         for value in ("0", "-5", "0.00"):
@@ -428,6 +449,28 @@ class SdkBoundary(unittest.TestCase):
         self.assertIs(honest.network.funds, Funds.UNKNOWN)
         self.assertEqual(guard.describe_funds(honest.network.funds), "funds not declared")
 
+    def test_the_override_is_a_described_target_not_a_bare_url(self) -> None:
+        """The non-deprecated selector, and that it changes nothing but the name.
+
+        A lone `base_url=` is deprecated (ENG-10955) and resolves to exactly this
+        config, so the two must agree on everything a request depends on — the
+        two bases and the funds — and differ only in the label, which this app
+        now supplies instead of inheriting the SDK's generic "custom".
+        """
+        from nexus_exchange import Client
+
+        described = guard.build_client(self.cfg(self.base)).network
+        self.assertEqual(described.label, guard.OVERRIDE_LABEL)
+
+        deprecated = Client(
+            base_url=self.base, api_key="k", api_secret="00" * 32
+        ).network
+        self.assertEqual(described.base_url, deprecated.base_url)
+        self.assertEqual(described.direct_base_url, deprecated.direct_base_url)
+        self.assertIs(described.funds, deprecated.funds)
+        # A faucet mints funds; nothing about a URL says this deployment has one.
+        self.assertFalse(described.has_faucet)
+
     def test_both_forms_actually_route_at_the_override(self) -> None:
         """Which is why reporting is the only difference that matters."""
         guard.build_client(self.cfg(self.base)).fetch_balance()
@@ -488,6 +531,11 @@ class Presentation(unittest.TestCase):
             guard.MAX_SHUTDOWN_WAIT_SECONDS, 3 * guard.REQUEST_TIMEOUT_SECONDS
         )
         self.assertLess(guard.MAX_SHUTDOWN_WAIT_SECONDS, 30)
+
+    def test_forced_exit_names_the_signal_that_forced_it(self) -> None:
+        """`128 + signum`, so a supervisor is not told SIGTERM was a Ctrl-C."""
+        self.assertEqual(guard.signal_exit_code(signal.SIGINT), 130)
+        self.assertEqual(guard.signal_exit_code(signal.SIGTERM), 143)
 
 
 if __name__ == "__main__":
