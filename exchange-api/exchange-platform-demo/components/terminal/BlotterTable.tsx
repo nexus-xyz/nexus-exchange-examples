@@ -330,7 +330,7 @@ export function BlotterTable<Row_>({
        * Sixth occurrence of aria-required-children on this project, and every one has
        * been a caller putting a non-row inside a table primitive. That is a fact about
        * the primitives, not about six call sites: `Table`, `RowGroup`, `HeadRow` and
-       * `Row` should make it unsayable. Recorded as open in audit/README.
+       * `Row` should make it unsayable. Left open for now.
        */}
       <TableState
         count={sorted.length}

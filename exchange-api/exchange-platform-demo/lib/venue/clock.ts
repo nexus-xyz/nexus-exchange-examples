@@ -1,8 +1,8 @@
 /*
  * One clock for the operate panes, and it is a constant.
  *
- * WHY A CONSTANT. `audit/floor.json` makes non-determinism a blocking convention
- * — no `Date.now()` and no argless `new Date()` anywhere in `lib/` or
+ * WHY A CONSTANT. This project's build-time checks make non-determinism a blocking
+ * convention — no `Date.now()` and no argless `new Date()` anywhere in `lib/` or
  * `components/` — because two captures of the same state have to be
  * byte-identical or visual regression is impossible. A request log is the most
  * tempting place in the console to reach for the real clock and the worst place

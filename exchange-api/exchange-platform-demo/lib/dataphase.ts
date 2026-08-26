@@ -73,11 +73,11 @@
  * surface resolved off one global phase, so `?load=error` blanked the entire terminal
  * at once.
  *
- * That is the opposite of the contract this repository already states. AGENTS.md rule
- * 9: a per-entry upstream failure surfaces on the affected entry rather than failing
- * the snapshot, and the aggregate stays 200 as long as one upstream succeeded. A
- * single flag that blanks twelve panels is precisely the failure model that rule
- * exists to forbid.
+ * That is the opposite of the resilience convention used elsewhere across this
+ * platform: a per-entry upstream failure surfaces on the affected entry rather than
+ * failing the whole snapshot, and the aggregate stays up as long as one upstream
+ * succeeded. A single flag that blanks twelve panels is precisely the failure model
+ * that convention exists to forbid.
  *
  * It is also the third time on this project that a value has been computed and then
  * not consulted — `TableState` was called with `count` and not `loading`; the visual
@@ -98,10 +98,10 @@
  * list, tick sizes and leverage caps are a build-time fixture here — `GET /markets`
  * is never actually called — so a region for it would have had no consumer, no way to
  * fail, and no way to be graded. That is the same "declared and never implemented"
- * pattern as `enum-fidelity` sitting in floor.json for months and the endpoint
- * parameter this file threaded through twelve call sites and ignored. When the
- * registry becomes a real fetch it gets a region; until then it does not get one for
- * looking tidy. `audit/scripts/state.mjs` is what caught it.
+ * pattern as an unused parameter threaded through twelve call sites and ignored.
+ * When the registry becomes a real fetch it gets a region; until then it does not
+ * get one for looking tidy. A build-time consistency check over this project caught
+ * it.
  */
 
 import { createContext, useContext } from "react";
@@ -116,7 +116,7 @@ export type Surface = (typeof SURFACES)[number];
 
 /**
  * Route → region. Every endpoint named at a `usePhase` call site appears here, and
- * `audit/scripts/state.mjs` fails if one does not — a route with no region would
+ * a build-time consistency check fails if one does not — a route with no region would
  * silently resolve to the default and be ungradeable, which is the whole defect this
  * file was rewritten to fix.
  */
@@ -161,8 +161,8 @@ export const PRESETS: Readonly<Record<string, PhaseMap>> = {
    */
   public: { account: "cold", history: "cold", activity: "cold" },
   /**
-   * One upstream is down and the rest are fine. Rule 9 made visible: the panels that
-   * have data keep it, and only the failed region says so.
+   * One upstream is down and the rest are fine. The resilience convention made
+   * visible: the panels that have data keep it, and only the failed region says so.
    */
   degraded: { account: "error" },
   /** Everything failed. Kept because it was the old `?load=error` and links exist. */

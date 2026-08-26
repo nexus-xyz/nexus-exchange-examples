@@ -43,8 +43,7 @@ export function useMediaQuery(query: string): boolean {
  *
  * Why 1024 and not 834. The reference treats 834 as *desktop chrome with one
  * substitution* — it keeps the top nav, rail, status bar and footer, and folds the
- * book column into a `Chart | Order Book | Trades` toggle
- * (findings.responsive.md §6). That is the better tablet design and it is the
+ * book column into a `Chart | Order Book | Trades` toggle. That is the better tablet design and it is the
  * intended end state. But the substitution has to be made in TradeScreen's desktop
  * branch, which is owned elsewhere right now, so this change routes 640–1023 to
  * the mobile IA instead: adapted for the width, and unambiguously better than a

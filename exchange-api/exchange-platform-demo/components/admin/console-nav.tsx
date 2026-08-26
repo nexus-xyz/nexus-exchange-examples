@@ -243,7 +243,8 @@ function ConsoleNav({ groups, pathname, live }: { groups: NavGroup[]; pathname: 
                   padding: "7px 9px",
                   /*
                    * THE CONSOLE'S PRIMARY NAVIGATION, so it carries the 44px
-                   * budget — floor.json spends the whole nav tier here. Below
+                   * budget — this project's tap-target floor spends the whole
+                   * nav tier here. Below
                    * 860px this same list IS the phone's nav strip (globals.css
                    * turns it horizontal), and 7px of padding around 14px of type
                    * left a 28px row: a destination you aim a thumb at, sized like
@@ -343,8 +344,9 @@ function EnvSwitcher({
             justifyContent: "center",
             gap: 5,
             padding: "6px 0",
-            /* A segmented control, so it sits in floor.json's 36–40 band rather
-               than at the 24px its type alone produced. This one decides play
+            /* A segmented control, so it sits in this project's 36–40px
+               tap-target band rather than at the 24px its type alone produced.
+               This one decides play
                money versus real money — it is the last control on the console
                that should be hard to hit on a phone. */
             minHeight: TAP_CONTROL,

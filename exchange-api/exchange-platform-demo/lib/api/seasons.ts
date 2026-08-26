@@ -3,21 +3,20 @@
  *
  * WHAT THIS MIRRORS
  *
- * The proposed read-only extension to the Nexus Exchange API, specified in
- * `personal/daniel/pod-roadmaps/proposals/growth-engine/seasons-prd.md` §9. Per
- * repo AGENTS.md rule 20 the real spec is contract-first and lives in
- * `nexus-xyz/nexus-exchange-api`; these types are the terminal's side of that
- * contract, written to the same conventions as ./types.ts:
+ * A proposed read-only extension to the Nexus Exchange API — not yet part of
+ * the published contract. The real spec is contract-first, so these types are
+ * written to the same conventions as ./types.ts in anticipation of that:
  *
  *   • Every monetary or token quantity arrives as a DECIMAL STRING, never a
  *     float. Parsing happens here and nowhere else.
  *   • Optional timestamps are nullable, never a zero date.
  *   • Enums are additive. `SeasonStatus` and `UnlockStatus` both carry an
- *     unknown-member fallback, because the contract gates validate schema
- *     *names* and not enum *membership* — the `TimeInForce`/`PostOnly` drift
- *     documented in eng/apps/exchange/INTERFACES-ARCHITECTURE.md §5. A closed
- *     enum here would turn any future member into a runtime parse failure in
- *     already-deployed clients.
+ *     unknown-member fallback, because contract gates validate schema *names*
+ *     and not enum *membership* — the same class of drift seen elsewhere in
+ *     this API, where the documented enum has fallen a member behind what the
+ *     server actually emits (see the `TimeInForce`/`PostOnly` note in
+ *     ./README.md). A closed enum here would turn any future member into a
+ *     runtime parse failure in already-deployed clients.
  *
  * WHAT IS DELIBERATELY NOT HERE
  *

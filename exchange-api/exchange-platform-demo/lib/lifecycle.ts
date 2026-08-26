@@ -35,7 +35,7 @@
  * `seedLedger()` plus an ordered list of (tick, action) events, the result is
  * byte-identical, because every non-derived input below was removed on purpose. And a
  * fresh page load starts from `seedLedger()`, so a URL still fully determines the
- * rendered screen and no state in `audit/manifest.json` regresses.
+ * rendered screen and no tracked state regresses.
  *
  * ## Determinism is not decoration here
  *

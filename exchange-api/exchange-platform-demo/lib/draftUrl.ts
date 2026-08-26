@@ -11,9 +11,9 @@
  * 10× cross. Every other combination — and the ones worth arguing about are all the
  * others — was unreachable, ungraded, and unlinkable.
  *
- * `audit/scripts/state.mjs` calls this the biggest single gap in the app and it is
- * right. A reviewer could not say "look at THIS" about a 10× short with a stop at
- * 58,200; they could only describe it and hope.
+ * A build-time consistency check over this project calls this the biggest single
+ * gap in the app and it is right. A reviewer could not say "look at THIS" about a
+ * 10× short with a stop at 58,200; they could only describe it and hope.
  *
  * WHY ONE PARAMETER AND NOT TWENTY-TWO
  *

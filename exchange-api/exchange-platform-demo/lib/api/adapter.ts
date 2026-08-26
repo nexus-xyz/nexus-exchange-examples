@@ -10,8 +10,9 @@
  *
  *  1. TOLERANT, NEVER THROWING. A malformed field degrades that field and records
  *     the reason in `errors[wireFieldName]`; it does not take down the panel.
- *     This mirrors repo AGENTS.md rule 9 (per-entry `*_error`, snapshot stays
- *     200) — one bad position must not blank the blotter.
+ *     This mirrors the resilience convention used elsewhere across this
+ *     platform (per-entry `*_error`, snapshot stays up) — one bad position
+ *     must not blank the blotter.
  *
  *  2. READ BOTH NAMES WHEN THE WIRE HAS TWO. The engine emits `limit_price`
  *     where the spec says `price`; order history uses `size` where `Order` uses

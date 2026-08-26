@@ -3,8 +3,8 @@
 /*
  * The wallet picker — `session=pending`.
  *
- * Structure from `audit/reference/shots/surfaces/auth.login.desktop.png`, captured
- * independently from their live venue: a centred modal, the venue mark, "Log in or sign
+ * Structure from a captured screenshot of the reference venue's desktop login
+ * surface: a centred modal, the venue mark, "Log in or sign
  * up", a short list of named wallets, an "Other wallets" escape hatch, and a
  * "Protected by …" attribution line at the bottom. Theirs is Privy-backed; the shape is
  * the same whichever connector you put behind it, which is the whole reason it is worth

@@ -85,8 +85,8 @@ export type MobilePane = "chart" | "book" | "trades";
  *
  * The reference's third nav slot is `Account`, and it holds the account card and the
  * SAME blotter as every other screen. That is what this is now: reuse rather than a
- * second implementation, the same resolution findings.portfolio.md §3 reached, and the
- * screen gets smaller rather than larger.
+ * second implementation, the same resolution our own review of the reference reached,
+ * and the screen gets smaller rather than larger.
  */
 export type MobileSheet = null | "ticket" | "account";
 
@@ -206,7 +206,7 @@ export function TradeScreen({
    *
    *   pane   · which ONE of chart / book / trades the single viewport is spending
    *            its space on. Co-visibility is a choice, and at 390px it is the
-   *            wrong one (findings.responsive.md §1).
+   *            wrong one.
    *   sheet  · the order ticket and the positions list, as destinations over the
    *            trade screen rather than panels stacked under it.
    */
@@ -272,7 +272,7 @@ export function TradeScreen({
      * The other divergence recorded here — submit below the derived block rather
      * than above it — has since been resolved in their favour. With a summary whose
      * length varies by order type, putting it under the button is what keeps the
-     * primary action at a fixed height. See audit/reference/findings.ticket.md §3.
+     * primary action at a fixed height.
      */
     const tablet = layout === "tablet";
     /* No H_STATUS_BAR: the status strip is desktop-only now. Leaving it in this sum
@@ -686,9 +686,9 @@ export function TradeScreen({
    * right edge and the book's left edge are the same pixel and the book runs full
    * height. 1512 is a 15-inch MacBook, which is where this gets looked at.
    *
-   * The lesson is about the harness, not the layout: `desktop` in audit/manifest.json
-   * is 1440, so every reference capture we hold shows the narrow branch of a layout
-   * that has two. See findings.header.md.
+   * The lesson is about the build-time verification, not the layout: `desktop` in
+   * our own config is pinned at 1440, so every reference capture we hold shows the
+   * narrow branch of a layout that has two.
    */
   return (
     <div style={{ height: "100%", display: "flex" }}>
@@ -846,9 +846,9 @@ const PANES: { id: MobilePane; label: string }[] = [
  *
  * The header is the point. The reference's ticket destination shows **no price at
  * all** — no symbol, no mark, no last, only a truncated ticker chip — so you place
- * a market order with the instrument's price nowhere on screen
- * (findings.responsive.md §3). Any sheet of ours carries the live identity and mark
- * it is about, which is cheap here because the feed is already in scope.
+ * a market order with the instrument's price nowhere on screen. Any sheet of ours
+ * carries the live identity and mark it is about, which is cheap here because the
+ * feed is already in scope.
  *
  * At tablet it is a side sheet rather than a full cover, so the chart and the book
  * stay visible beside it — same reasoning, one step further.
@@ -868,7 +868,7 @@ function MobileSheetShell({
    * This shell always drew the symbol and the live mark, which is right for the ticket
    * — you are placing an order in a specific market at a specific price, and the
    * reference's own ticket destination showing no price at all is a divergence we
-   * argued for and kept (findings.ticket.md §7).
+   * argued for and kept.
    *
    * It is wrong for Account. Balances, positions and equity span every market you
    * hold; the symbol you happened to be charting when you tapped the tab has nothing
@@ -903,7 +903,7 @@ function MobileSheetShell({
      *
      * The nav is deliberately NOT covered. A modal that hides the primary
      * navigation is how the reference loses the way back out of a route
-     * (findings.responsive.md §1) — the sheet stops above it instead, so both the
+     * — the sheet stops above it instead, so both the
      * × and the tab bar are always live.
      */
     <div

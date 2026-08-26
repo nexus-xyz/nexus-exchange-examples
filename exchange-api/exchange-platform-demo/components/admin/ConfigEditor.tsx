@@ -118,8 +118,9 @@ export function ConfigEditor({
                         gap: 9,
                         padding: "7px 9px",
                         /* The whole row is the target — the checkbox is 16px and a
-                           16px box is the offender floor.json names by name. The
-                           label carries the height so the tick can stay a tick. */
+                           16px box is exactly the size this project's tap-target
+                           floor calls out by name. The label carries the height so
+                           the tick can stay a tick. */
                         minHeight: TAP_FLOOR,
                         borderRadius: R_SM,
                         border: `1px solid ${listed ? `${GREEN}44` : L2}`,
@@ -509,7 +510,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (on: boolean) => void
        * THE TARGET IS 32px TALL; THE TRACK IS STILL 21.
        *
        * A 38×21 switch is the shape this control should be — any taller and it
-       * stops reading as a switch — but 21px is under floor.json's 32px hard
+       * stops reading as a switch — but 21px is under this project's 32px hard
        * floor for a control you have to hit, and these govern whether an order
        * type exists on the venue. So the button grows a transparent 32px hit
        * area and paints the same pill inside it. Nothing moves visually; the

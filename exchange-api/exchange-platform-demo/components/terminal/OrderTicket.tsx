@@ -58,9 +58,9 @@ export type OrderSide = "buy" | "sell";
  */
 export type OrderType = "limit" | "market" | "stop_limit" | "stop_market" | "scale" | "twap";
 /**
- * The real engine's TimeInForce set (exchange-types/src/lib.rs). We had shipped
- * "ALO", which is a Hyperliquid term and not a value this venue accepts —
- * post-only is a TIF here, not a separate boolean flag.
+ * The real engine's TimeInForce set. We had shipped "ALO", which is a
+ * Hyperliquid term and not a value this venue accepts — post-only is a TIF
+ * here, not a separate boolean flag.
  */
 export type Tif = "GTC" | "IOC" | "FOK" | "PostOnly";
 export type MarginMode = "cross" | "isolated";

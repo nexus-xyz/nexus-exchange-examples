@@ -447,12 +447,12 @@
 /*
  * The navigation tap tier, on a touch surface.
  *
- * `audit/floor.json` grades anything inside a nav landmark at 44px, and it grades it
- * at the mobile AND the tablet viewport — so the breakpoint is the 1023px globals.css
- * already uses to switch the terminal's own controls onto the touch tiers, not the
- * 760px this page's nav layout happens to change at. The top bar's links measured 34px
- * and the footer's 30, which is the default tier applied to controls the floor's
- * classifier reads as navigation.
+ * This project's tap-target floor grades anything inside a nav landmark at 44px, and
+ * it grades it at the mobile AND the tablet viewport — so the breakpoint is the
+ * 1023px globals.css already uses to switch the terminal's own controls onto the
+ * touch tiers, not the 760px this page's nav layout happens to change at. The top
+ * bar's links measured 34px and the footer's 30, which is the default tier applied
+ * to controls the classifier reads as navigation.
  *
  * Both heights live here rather than inline for the reason globals.css records against
  * `.nx-segmented`: an inline `min-height` wins over every class rule, so a control that

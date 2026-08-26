@@ -10,8 +10,8 @@
  * (see lib/api/README.md § Divergences and lib/api/absence.ts § THE ABSENCE
  * INVENTORY). Absence has to be *renderable* before it can be *fetched*.
  *
- * The geometry of the empty case is taken from the reference study
- * (audit/reference/findings.blotter.md §3), because it got it right:
+ * The geometry of the empty case is matched from the reference venue we studied
+ * while building this, because it got it right:
  *
  *   • the caller renders the FULL header row at its final widths — the table's
  *     skeleton is the same object whether it has rows or not, so nothing
@@ -134,7 +134,7 @@ export function EmptyState({
  * Four of these used to end in it — "No fills yet", "No order history yet". It reads
  * as reassurance and it is a promise the venue cannot make: "yet" asserts that a row
  * is coming. The reference never says it on any of its ten tabs, and the connected-
- * and-empty pass confirmed the whole set (findings.portfolio.md §4). Their nouns are
+ * and-empty pass confirmed the whole set. Their nouns are
  * adopted with it: `No trades`, not `No fills`.
  */
 export const EMPTY_COPY = {
@@ -261,7 +261,7 @@ export function LoadingFigure({ chars = 6, height = 11 }: { chars?: number; heig
  *
  * Field-level failures do NOT come here; they render as `<AbsentValue/>` in place,
  * because one bad row must degrade that row and not the panel
- * (lib/api/adapter.ts principle 1, repo AGENTS.md rule 9).
+ * (lib/api/adapter.ts principle 1).
  */
 export function ErrorState({
   message = "Could not load this panel",

@@ -1,9 +1,9 @@
 /*
  * Nexus Exchange — the real market registry.
  *
- * Transcribed from eng/apps/exchange/backend/services/exchange.toml, the config
- * the exchange service actually boots with. All 32 markets, verbatim values.
- * Nothing here is invented: if a number is in this file it is in that TOML.
+ * Transcribed from the exchange's own market-registry config — the file the
+ * exchange service actually boots with. All 32 markets, verbatim values.
+ * Nothing here is invented: if a number is in this file it is in that config.
  *
  * Why the client carries a copy of server config at all: `GET /markets` returns
  * exactly this data, so the registry below is a *fixture of that response*. It
@@ -11,8 +11,8 @@
  * API is wired in, `REGISTRY` is replaced by the fetched `WireMarket[]` and
  * every consumer keeps working — the type is the same.
  *
- * WHAT /markets RETURNS vs WHAT exchange.toml HOLDS
- *   The `WireMarket` shape (10 fields) is a strict subset of the TOML. Fees,
+ * WHAT /markets RETURNS vs WHAT THE SERVER CONFIG HOLDS
+ *   The `WireMarket` shape (10 fields) is a strict subset of that config. Fees,
  *   price bands, funding intervals, OI caps and the isolated-margin floor are
  *   in the config but NOT in the /markets response, so they live on `extra`
  *   below and are flagged as fixture-only. A live client cannot learn taker fees
@@ -26,8 +26,9 @@ import { MARKET_SUFFIX, QUOTE_ASSET } from "./enums";
 const d = (s: string) => s as Decimal;
 
 /**
- * Registry fields present in exchange.toml but absent from `GET /markets`.
- * Fixture-only: a live deployment cannot source these from the documented API.
+ * Registry fields present in the exchange's server-side market config but
+ * absent from `GET /markets`. Fixture-only: a live deployment cannot source
+ * these from the documented API.
  */
 export type RegistryExtra = {
   /** Maker fee in bps. Negative = rebate. */

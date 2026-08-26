@@ -128,7 +128,7 @@ export function Terminal({
   /*
    * The data phase, PER SURFACE. See lib/dataphase: five independent loading regions
    * rather than one global flag, because one flag blanking twelve panels is the exact
-   * failure model AGENTS.md rule 9 forbids. `?load=public` is the one that matters —
+   * failure model this design avoids. `?load=public` is the one that matters —
    * market data up, account pending.
    */
   const [phase, setPhase] = useState<PhaseMap>({});
@@ -351,7 +351,7 @@ export function Terminal({
 
   /*
    * URL <-> state. Restore on mount and on back/forward; write on change.
-   * This is what makes every state in audit/manifest.json actually reachable —
+   * This is what makes every addressable state actually reachable by URL —
    * see hooks/useUrlState.ts for why it is a mount effect and not a render read.
    */
   const writeUrl = useUrlState((u: UrlState) => {
@@ -713,8 +713,8 @@ export function Terminal({
        *
        * ⌘K now opens the market modal. What the palette uniquely held — jump to a
        * screen, Cancel All, Close All — has not been rebuilt here yet, and that is a
-       * real subtraction rather than a tidy-up: it is recorded in
-       * audit/reference/decisions.json so it is a decision and not an accident.
+       * real subtraction rather than a tidy-up, tracked deliberately rather than
+       * dropped by accident.
        */}
     </div>
     </DataPhaseProvider>

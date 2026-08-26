@@ -1,10 +1,11 @@
 /*
  * Nexus Exchange API — wire types.
  *
- * Hand-mirrored from the vendored spec at
- *   eng/apps/exchange/api/openapi.json   (info.version 0.7.0)
- * and cross-checked against the engine types at
- *   eng/apps/exchange/backend/common/exchange-types/src/lib.rs
+ * Hand-mirrored from the vendored, byte-pinned OpenAPI spec (info.version
+ * 0.7.0) and cross-checked against the exchange engine's own types — the
+ * engine is the second, higher-priority source because it is what actually
+ * accepts or rejects a request on the wire, independent of what the spec
+ * documents.
  *
  * These types describe BYTES ON THE WIRE, not what the UI renders. Nothing in
  * here is formatted, rounded, or converted. The translation to the terminal's
@@ -517,10 +518,10 @@ export type WireStatsSnapshot = {
 /**
  * A parsed value that survived a partial upstream failure.
  *
- * Mirrors the admin-console convention (repo AGENTS.md rule 9): a bad field on
- * one entry surfaces as a machine-readable `*_error` on that entry rather than
- * failing the whole snapshot. `errors` is keyed by the WIRE field name so an
- * error message can be traced straight back to the payload.
+ * Follows a resilience convention used elsewhere across this platform: a bad
+ * field on one entry surfaces as a machine-readable `*_error` on that entry
+ * rather than failing the whole snapshot. `errors` is keyed by the WIRE field
+ * name so an error message can be traced straight back to the payload.
  */
 export type Parsed<T> = T & {
   /** Absent on a clean parse. Present ⇒ at least one field fell back. */

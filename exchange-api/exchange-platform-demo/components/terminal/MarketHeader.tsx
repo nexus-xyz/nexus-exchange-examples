@@ -234,9 +234,9 @@ export function MarketHeader({
  * scroller with no visible affordance, and `Funding / Countdown` was the cell we
  * had already decided we could not afford to lose (see `useHeadStats` above).
  *
- * The reference's answer to a strip that does not fit is the best idea in the
- * capture set (findings.responsive.md §5): a **density toggle** rather than a
- * scroller. A 20×20 chevron with the accessible name "Show market stats in a
+ * The reference's answer to a strip that does not fit is the best idea we found
+ * studying it: a **density toggle** rather than a scroller. A 20×20 chevron
+ * with the accessible name "Show market stats in a
  * two-column layout" expands the strip into a label/value grid that also *pairs*
  * the stats — `Mark | Oracle`, `24h Volume | Open Interest` — and the chart shrinks
  * to pay for it. Collapsed, it shows only the cells that fit, in a grid, with

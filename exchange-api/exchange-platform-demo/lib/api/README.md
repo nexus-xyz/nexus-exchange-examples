@@ -8,16 +8,20 @@ Ground truth, in priority order:
 
 | Source | What it settles |
 | --- | --- |
-| `eng/apps/exchange/backend/common/exchange-types/src/lib.rs` | the engine's enums and structs — what actually rejects your order |
-| `eng/apps/exchange/api/openapi.json` (`info.version` **0.7.0**) | the documented HTTP surface, vendored and byte-pinned |
+| The exchange engine's own enums and structs | what actually rejects your order — this wins whenever it disagrees with the spec |
+| The published OpenAPI spec (`info.version` **0.7.0**) | the documented HTTP surface, vendored and byte-pinned |
+| The exchange's server-side market-registry config | the 32-market registry: ticks, lots, margin rates, fees |
 
 > **Two spec versions appear in this repo and neither is wrong.** This mirror was
 > hand-transcribed against **0.7.0** and byte-pinned to it, so that is the version
-> it can honestly claim. The live spec is now **0.8.1**, and the newer surfaces —
-> the venue console's API reference, `venue-kit`, the platform landing page — cite
-> that. Re-verifying this mirror against 0.8.1 is real work and has not been done;
-> until it is, changing the number here would be a claim rather than a fact.
-| `eng/apps/exchange/backend/services/exchange.toml` | the 32-market registry: ticks, lots, margin rates, fees |
+> it can honestly claim. The published spec has moved on since — several MINOR
+> versions ahead, with more releases already queued — and the newer surfaces
+> (the venue console's API reference, `venue-kit`, the platform landing page)
+> cite the current one. Re-verifying this mirror against the current spec is
+> real work and has not been done; until it is, pinning a specific "current"
+> number here would go stale again immediately, so this note states the
+> situation instead: **this mirror is a snapshot at 0.7.0, deliberately kept**,
+> not a claim that 0.7.0 is current.
 
 Where the engine and the spec disagree, **the engine wins** and the disagreement
 is recorded below.
@@ -28,7 +32,7 @@ is recorded below.
 | --- | --- |
 | `types.ts` | wire types, one per spec schema. Nothing formatted, nothing converted. |
 | `enums.ts` | the real enum values as `const` tuples + unions, type guards, casing conversions. |
-| `markets.ts` | the 32-market registry transcribed from `exchange.toml`, plus tick/lot precision derivation. |
+| `markets.ts` | the 32-market registry transcribed from the exchange's server-side market config, plus tick/lot precision derivation. |
 | `adapter.ts` | the only boundary. Wire → UI model (tolerant parsers) and UI → wire (validated serializers). |
 
 Consumers: `lib/markets.ts` (universe + presentation), `lib/feed.ts` (mock market
@@ -148,7 +152,7 @@ handling site.
     follows `initial_margin_rate`; `max_leverage` is its reciprocal. → a leverage
     control can only *display* `1 / imr`. `Position.lev` in `lib/account.ts` is
     explicitly mock.
-14. **`exchange.toml` is richer than `GET /markets`.** Fees
+14. **The exchange's server-side market config is richer than `GET /markets`.** Fees
     (`maker_rebate_bps` / `taker_fee_bps`), `price_band_bps`,
     `funding_interval_s`, `funding_rate_cap`, `max_open_interest`,
     `liquidation_penalty_bps` and `isolated_margin_floor_ratio` are all server
@@ -365,8 +369,8 @@ no-data".
 
 **`components/terminal/states.tsx`** — the presentational half. `EmptyState`
 (header row stays the caller's; this is one centred 13px line, no icon, no card,
-no skeleton rows — geometry from `audit/reference/findings.blotter.md` §3, copy
-ours from `EMPTY_COPY` since our empty means "you have none", not "connect a
+no skeleton rows — geometry matched from the reference venue's own empty state,
+copy ours from `EMPTY_COPY` since our empty means "you have none", not "connect a
 wallet"), `LoadingState` / `LoadingFigure` (no spinners; the figure placeholder
 is sized in `ch` so nothing shifts when the value lands), `ErrorState`
 (message + `GET /positions · 503` + retry), `StaleBadge` / `StaleBanner` (amber,

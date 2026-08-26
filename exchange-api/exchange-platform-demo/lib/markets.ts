@@ -8,8 +8,8 @@
  * WHAT CHANGED WHEN THIS BECAME CONTRACT-BACKED
  *   • Symbols are the real `{BASE}-USDX-PERP` ids, not `{BASE}-USDX`.
  *   • The universe is the real 32-market registry (lib/api/markets.ts, transcribed
- *     from exchange.toml), not a hand-picked 14. The recognisable majors are
- *     ordered first and also exported as `FEATURED`.
+ *     from the exchange's own server-side market config), not a hand-picked 14.
+ *     The recognisable majors are ordered first and also exported as `FEATURED`.
  *   • `tickSize` / `lotSize` / margin rates / `maxLev` come from the registry.
  *   • Price and size precision DERIVE FROM tick_size / lot_size. The old rule
  *     guessed decimals from price magnitude, which is wrong at both ends of the
@@ -80,7 +80,7 @@ export type Market = {
   /** Size decimals, derived from `lot_size`. */
   sizeDp: number;
 
-  // ── Registry values that exist in exchange.toml but NOT in `GET /markets` ──
+  // ── Registry values that exist in the server config but NOT in `GET /markets` ──
   /** Maker fee, bps. Negative = rebate. Fixture-only: not served by the API. */
   makerRebateBps: number;
   /** Taker fee, bps. Fixture-only: not served by the API. */

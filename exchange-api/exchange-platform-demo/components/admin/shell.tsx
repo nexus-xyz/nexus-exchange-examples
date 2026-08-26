@@ -604,8 +604,8 @@ export function Note({ tone = "info", label, children }: { tone?: "info" | "warn
 /*
  * THE THREE SHARED CONTROL STYLES CARRY THE TAP FLOOR, so no call site has to
  * remember it. 7px of padding around 9–11px type produced 28px buttons and 31px
- * inputs — a pixel or four under floor.json's 32px default tier, everywhere in
- * the console at once. Stating the height here fixes every one of them and
+ * inputs — a pixel or four under this project's 32px default tap-target tier,
+ * everywhere in the console at once. Stating the height here fixes every one of them and
  * cannot drift when the type scale moves.
  */
 export const inputStyle: CSSProperties = {

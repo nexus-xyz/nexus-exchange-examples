@@ -473,8 +473,8 @@ export function OverflowTabs<T extends string>({
         {t.label}
         {/* Parenthesised, as theirs: `Balances (1)`. A bare number beside a word reads
             as part of the label at a glance — "Positions 3" looks like the name of a
-            thing — where the brackets say "count of". Recorded in
-            findings.portfolio.md §2a from the connected pass and unfixed until now. */}
+            thing — where the brackets say "count of". Noted from the connected pass
+            over the reference venue and unfixed until now. */}
         {t.badge !== undefined && t.badge !== "" && (
           <span style={{ fontFamily: MONO, color: FAINT, fontSize: size - 1 }}>({t.badge})</span>
         )}

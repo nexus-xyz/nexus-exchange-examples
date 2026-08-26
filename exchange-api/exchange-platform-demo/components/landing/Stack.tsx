@@ -67,9 +67,9 @@ const DEPS: { name: string; why: string }[] = [
 ];
 
 /**
- * Measured, not asserted. Every figure here comes from `next build` or from
- * `audit/floor.json`, and the point of putting numbers on a marketing page is that a
- * reader can check them — 223 kB is a claim, "blazing fast" is not.
+ * Measured, not asserted. Every figure here comes from `next build` or from this
+ * project's build-time checks, and the point of putting numbers on a marketing page
+ * is that a reader can check them — 223 kB is a claim, "blazing fast" is not.
  */
 const FACTS: { figure: string; label: string; detail: string }[] = [
   {

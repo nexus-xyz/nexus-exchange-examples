@@ -3,10 +3,10 @@
 /*
  * Deposit.
  *
- * Built from `audit/reference/shots/account/account.deposit.desktop.png` — the one
- * account surface on the reference venue that opens without a wallet. Transfer and
+ * Built from a captured screenshot of the reference venue's deposit surface — the
+ * one account surface on the reference venue that opens without a wallet. Transfer and
  * Withdraw are `<button disabled>` there, so their contents are unknown and are not
- * guessed at; see findings.ticket.md §7.
+ * guessed at.
  *
  * ASSET, THEN CHAIN. The captured list is not a list of tickers — every row is a
  * symbol over the network it arrives on (`USDC / Arbitrum`, `SOL / Solana`,

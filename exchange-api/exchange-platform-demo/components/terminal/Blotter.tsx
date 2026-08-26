@@ -1511,7 +1511,7 @@ export function Blotter({
         {/* The reference puts these two in the tab strip, at the point of use, and
             the same preferences also live in its Settings → Activity Tables group.
             Two entry points to one setting is a good pattern and a state-sync trap;
-            noted in findings.blotter.md §5 for when Settings exists here. */}
+            noted here for when Settings exists in this app. */}
         {!narrow && tab === "balances" && (
           <>
             <StripCheckbox

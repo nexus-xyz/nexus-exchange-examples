@@ -47,7 +47,7 @@ import { usePhase } from "@/lib/dataphase";
 import { LoadingFigure, TableState } from "../terminal/states";
 import { ABSENT_GLYPH } from "@/lib/api/absence";
 
-/* Their three selectors, verbatim from the logged-in pass (findings.portfolio.md §2). */
+/* Their three selectors, verbatim from the logged-in pass over the reference venue. */
 const ACCOUNT_SCOPES = ["All", "Only Perps"] as const;
 const PERIODS = ["24 Hours", "7 Days", "30 Days", "All-Time"] as const;
 const CHART_METRICS = ["Account Value", "PNL", "Perps PNL"] as const;

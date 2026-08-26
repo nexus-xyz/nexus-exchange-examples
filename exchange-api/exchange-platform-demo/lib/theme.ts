@@ -72,9 +72,9 @@ export const MUT = "#9a9a9a";
  * #858585 measures 5.69:1 on pure black. NOTE: pure black is the BEST case, not
  * the worst — for light-on-dark text a *lighter* surface reduces contrast, so
  * these tokens still fail on the raised surfaces (#141414 chips, #1c1c1c edges)
- * and on the tinted chip backgrounds. The audit reports ~40 remaining offenders
- * per desktop capture, down from ~1,800. Finishing this needs either another step
- * up on the label tier or darker chip fills; see audit/README.md.
+ * and on the tinted chip backgrounds. Accessibility checks report ~40 remaining
+ * offenders per desktop capture, down from ~1,800. Finishing this needs either
+ * another step up on the label tier or darker chip fills.
  */
 export const DIM = "#858585";
 /**
@@ -198,9 +198,8 @@ export const W_RAIL = 300;
 
 // ---- mobile chrome (the mobile trade screen is a fixed-viewport app too) ----
 /**
- * Bottom tab bar. The reference venue's is 390×79 with 73×70 items
- * (audit/reference/findings.responsive.md §1, §4) — a shipped venue spends its
- * whole 44px budget here and nowhere else. Ours is a touch tighter because our
+ * Bottom tab bar. The reference venue's is 390×79 with 73×70 items — a shipped
+ * venue spends its whole 44px budget here and nowhere else. Ours is a touch tighter because our
  * status bar stays on at mobile; items still clear TAP_PRIMARY.
  *
  * Treat this as a MINIMUM: BottomNav adds `env(safe-area-inset-bottom)` on top,
@@ -218,8 +217,8 @@ export const H_VIEW_TOGGLE = 40;
 // ---- tap-target tiers ----
 /**
  * Measured, not aspirational. The reference runs `min 15 · median 35 · max 70`
- * at mobile with 6 of 26 controls reaching 44, and **0 of 52 at tablet**
- * (findings.responsive.md §4). A flat ≥44 is a floor no comparable product
+ * at mobile with 6 of 26 controls reaching 44, and **0 of 52 at tablet**.
+ * A flat ≥44 is a floor no comparable product
  * meets, and chasing it uniformly costs the density that makes a terminal a
  * terminal. So the target is tiered, not flat:
  *

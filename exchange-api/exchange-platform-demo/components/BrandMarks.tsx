@@ -2,7 +2,8 @@
  * Brand chips for the deposit screen.
  *
  * WHY THEY ARE DRAWN AND NOT FETCHED. This app makes zero third-party requests —
- * it is a hard floor in `audit/floor.json` and it is a number on the platform page.
+ * that is a hard floor enforced by this project's build-time checks, and it is a
+ * number on the platform page.
  * A logo strip is the single most common way that gets broken, because the obvious
  * implementation is a CDN URL per brand. Every mark below is inline SVG with no
  * network cost, no layout shift and nothing to go missing when someone else's asset

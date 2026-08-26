@@ -1,24 +1,25 @@
 /** @type {import('next').NextConfig} */
 
 /*
- * The audit harness builds into its own directory.
+ * A configurable dist dir, because a single shared `.next` is a trap the moment
+ * more than one Next process touches this project at once.
  *
- * `next dev` and `next start` share `.next`. So the moment anyone runs `npm run dev`
- * to look at the app — which is exactly what happens while a design review is going
- * on — the dev compiler overwrites the production build the harness is serving. The
- * server keeps running and keeps serving HTML that references the previous chunk
- * hashes; every one of them 400s; React never hydrates.
+ * `next dev` and `next start` share `.next` by default. So the moment a dev
+ * server starts up while a separately-built production server is still
+ * running against the same directory, the dev compiler overwrites the build
+ * the other server is serving. That server keeps running and keeps serving
+ * HTML that references the previous chunk hashes; every one of them 400s;
+ * React never hydrates.
  *
- * The failure is quiet and it is expensive. A non-hydrated page still RENDERS: the
- * server HTML paints, text is readable, screenshots look plausible. What is gone is
- * every event handler — and `useMediaQuery` reads false before mount, so a 390px
- * viewport gets the DESKTOP shell. It has cost this project two runs on one
- * afternoon: an affordance sweep that reported a live control dead, and a spacing
- * audit that measured an 89px-wide desktop table at phone width.
+ * The failure is quiet and it is expensive. A non-hydrated page still RENDERS:
+ * the server HTML paints, text is readable, screenshots look plausible. What
+ * is gone is every event handler — and `useMediaQuery` reads false before
+ * mount, so a 390px viewport gets the DESKTOP shell. That is an easy thing to
+ * miss if whatever is checking the page only looks at rendered output.
  *
- * `NEXT_DIST_DIR=.next-audit` gives the harness its own build output, so a dev server
- * and a graded server can run at the same time and neither can corrupt the other. It
- * has to be set for both the build and the server — they must agree.
+ * `NEXT_DIST_DIR` lets a second process point at its own build output, so two
+ * servers can run at once and neither corrupts the other. It has to be set
+ * for both the build and the server that serves it — they must agree.
  */
 /*
  * `@nexus-eaas/venue-kit` is a source-only package — TypeScript, no build step,

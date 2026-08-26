@@ -2,8 +2,9 @@
  * Nexus Exchange API — enumerations.
  *
  * Sources of truth, in priority order:
- *   1. eng/apps/exchange/backend/common/exchange-types/src/lib.rs  (the engine)
- *   2. eng/apps/exchange/api/openapi.json  info.version 0.7.0      (the spec)
+ *   1. the exchange engine's actual runtime behavior — what accepts or rejects
+ *      an order, independent of what any document says
+ *   2. the published OpenAPI spec, info.version 0.7.0 (vendored and byte-pinned)
  *
  * Where they disagree, the ENGINE wins and the disagreement is commented here
  * and listed in ./README.md. The engine is what actually rejects your order.

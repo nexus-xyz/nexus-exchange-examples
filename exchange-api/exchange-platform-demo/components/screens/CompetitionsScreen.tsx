@@ -16,7 +16,8 @@
  * you could not see that S1 was a four-tranche short ladder and S6 a five-tranche
  * long one. The matrix indexes columns on months AFTER SETTLEMENT instead, which
  * aligns the ladders so they can be compared, and encodes distribution state in
- * colour. See seasons-model.ipynb §5.
+ * colour — a choice carried over from the growth-programme model this feature
+ * was designed against.
  *
  * The settlement record deliberately does NOT repeat the ladder — the matrix above
  * carries it, and an expandable per-season schedule here was pure duplication. What

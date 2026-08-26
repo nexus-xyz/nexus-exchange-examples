@@ -162,7 +162,7 @@ export function AccountPanel({
 
       {/*
        * Three buttons that all had `cursor: pointer` and no handler — the exact
-       * defect `floor.json`'s `no-dead-affordance` convention was written for and
+       * defect this project's `no-dead-affordance` convention was written for and
        * never mechanized to catch.
        *
        * Deposit now opens. Transfer and Withdraw are DISABLED rather than inert,
@@ -207,7 +207,7 @@ export function AccountPanel({
             key={label}
             aria-disabled="true"
             className="nx-segmented"
-            title={`${label} is wallet-gated on the venue we are matching, so its contents have never been captured — see audit/reference/findings.ticket.md §7`}
+            title={`${label} is wallet-gated on the venue we are matching, so its contents have never been captured`}
             style={{
               border: `1px solid ${L2}`,
               borderRadius: R_MD,

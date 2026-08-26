@@ -44,13 +44,13 @@ three projects:
 |---|---|
 | `/` | the landing page that sells the offering |
 | `/trade` | the trader-facing terminal a venue deploys under its own brand |
-| `/admin` | the venue operator's console — **bundled here for the demo only.** In the design it is a separate Nexus-hosted application (EP-007). |
+| `/admin` | the venue operator's console — **bundled here for the demo only.** In the design it is a separate Nexus-hosted application. |
 
 Beside them:
 
 | Directory | What it holds |
 |---|---|
-| `venue-kit/` | tenant config, exact decimal maths, the builder fee, and an attribution ledger emulated on the published API. Source-only TypeScript, no runtime dependencies, 58 tests. EP-012 dissolves it: the config schema moves to the admin API, the maths folds into the template. |
+| `venue-kit/` | tenant config, exact decimal maths, the builder fee, and an attribution ledger emulated on the published API. Source-only TypeScript, no runtime dependencies, 58 tests. The design direction dissolves it into the platform proper: the config schema moves to the admin API, the maths folds into the template. |
 
 ## Develop
 
@@ -216,9 +216,10 @@ components/
 
 ## The API contract
 
-`lib/api/` mirrors `eng/apps/exchange/api/openapi.json`: real `-USDX-PERP` symbols, the
-real 32-market registry transcribed from `exchange.toml`, decimal values as branded
-strings, and precision derived from each market's `tick_size` / `lot_size`.
+`lib/api/` mirrors the published Exchange API OpenAPI spec: real `-USDX-PERP`
+symbols, the real 32-market registry transcribed from the exchange's own
+server-side market config, decimal values as branded strings, and precision
+derived from each market's `tick_size` / `lot_size`.
 
 `lib/api/README.md` records every divergence from the spec and what a future engineer
 changes to point this at the live API. Capabilities the UI shows that the API does not
@@ -243,6 +244,8 @@ the source branch; this directory is the app alone.
 ## Positioning note
 
 Copy here uses current framing: the Exchange and the Exchange blockchain. Internal
-component names (NexusCore, NexusEVM, NexusBFT, Prover Network) do not appear, per
-`AGENTS.md` rule 5. Fee numbers are illustrative for the mock, not the published
-schedule in `strategy/FEES.md`.
+component names (NexusCore, NexusEVM, NexusBFT, Prover Network) are architectural
+terms used in developer and internal docs; they deliberately do not appear in
+this example's copy, which follows the same external-positioning language as the
+rest of the public-facing product. Fee numbers are illustrative for the mock,
+not the company's actual published fee schedule.

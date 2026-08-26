@@ -6,11 +6,12 @@
  * Two reasons this exists, and the second is the load-bearing one:
  *
  *   1. A trader can link to, bookmark, and reload a specific market and layout.
- *   2. The Frontend Factory can only audit states it can *address*. Click-scripted
- *      setup is fragile, non-reproducible, and silently drifts as the UI changes —
- *      so `factory/manifest.json` enumerates states as URLs, and every state in it
- *      has to be reachable by navigation alone. Before this hook, all 45 manifest
- *      states rendered the same default view and coverage was a fiction.
+ *   2. This project's build-time verification can only check states it can
+ *      *address*. Click-scripted setup is fragile, non-reproducible, and
+ *      silently drifts as the UI changes — so a manifest enumerates states as
+ *      URLs, and every state in it has to be reachable by navigation alone.
+ *      Before this hook, all 45 manifest states rendered the same default view
+ *      and coverage was a fiction.
  *
  * Read-on-mount, not read-during-render. Reading `location.search` while
  * rendering would make the server and client disagree and trip the hydration

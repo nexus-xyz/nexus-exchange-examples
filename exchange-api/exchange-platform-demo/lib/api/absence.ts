@@ -5,10 +5,11 @@
  * WHY THIS FILE EXISTS
  *
  * `adapter.ts` is tolerant by design: a bad field degrades to a fallback and
- * records `errors["<wire_field>_error"]` (repo AGENTS.md rule 9). That is the
- * right transport behaviour and the wrong *rendering* behaviour, because the
- * fallback for a number is `0`. A blotter that prints `0` where the venue sent
- * nothing is not an ugly panel — it is a lying panel:
+ * records `errors["<wire_field>_error"]` (the resilience convention used
+ * elsewhere across this platform). That is the right transport behaviour and
+ * the wrong *rendering* behaviour, because the fallback for a number is `0`.
+ * A blotter that prints `0` where the venue sent nothing is not an ugly panel
+ * — it is a lying panel:
  *
  *   • `liquidation_price` is hardcoded `"0"` on the live `/positions` path. Shown
  *     as a price it says "this position liquidates at zero", i.e. is perfectly

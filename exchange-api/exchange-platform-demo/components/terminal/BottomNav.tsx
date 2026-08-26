@@ -6,10 +6,10 @@
  * We had none: at 390px the shell reused `TopNav` with `compact`, which drops the
  * search affordance and the ticker and leaves three 32px-tall text tabs at the top
  * of the screen. The reference venue instead ships a `390×79` bottom bar with five
- * `73×70` items (audit/reference/findings.responsive.md §1), and that one component
- * is where its entire 44px tap budget goes — 6 of its 26 mobile controls reach 44
- * and five of those six are these (§4). So a bottom bar buys the primary-navigation
- * tap tier for free, and it is the anchor the destination-based mobile IA needs.
+ * `73×70` items, and that one component is where its entire 44px tap budget goes —
+ * 6 of its 26 mobile controls reach 44 and five of those six are these. So a bottom
+ * bar buys the primary-navigation tap tier for free, and it is the anchor the
+ * destination-based mobile IA needs.
  *
  * Two rules taken from their capture:
  *

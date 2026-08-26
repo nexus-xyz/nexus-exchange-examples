@@ -3,8 +3,8 @@
 /*
  * The mobile navigation drawer — behind the wordmark.
  *
- * From `audit/reference/shots/responsive/mobile.drawer.mobile.png`, captured from their
- * venue: tapping the logo on a phone does not go home, it opens a left drawer holding
+ * From a captured screenshot of the reference venue's mobile view: tapping the logo
+ * on a phone does not go home, it opens a left drawer holding
  * the primary destinations, the venue's status dots, secondary links and the build
  * version. The rest of the screen dims.
  *

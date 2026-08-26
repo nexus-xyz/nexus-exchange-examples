@@ -267,7 +267,8 @@ export function SortableTable({
                            * A 9px label with no padding is a 12px-tall button, and
                            * sorting is the only way to read a seven-column table on
                            * a phone. The label stays the size it was — the button
-                           * grows to floor.json's 32px default tier around it, and
+                           * grows to this project's 32px default tap-target tier
+                           * around it, and
                            * the cell gives back 4px of its own padding so the header
                            * row ends up barely taller than before.
                            */
@@ -460,8 +461,8 @@ export function ConfirmAction({
           onClick={() => setOpen(true)}
           /* Halting the venue and cancelling every open order are the isolated
              primary actions on this console, so they take the 44px tier rather
-             than the default floor — floor.json's `submit` tier is exactly this
-             case: the control you must not miss. */
+             than the default floor — the project's `submit` tap-target tier is
+             exactly this case: the control you must not miss. */
           style={{ ...buttonStyle, color: tone, border: `1px solid ${tone}55`, background: `${tone}0d`, alignSelf: "flex-start", minHeight: TAP_PRIMARY }}
         >
           {label}

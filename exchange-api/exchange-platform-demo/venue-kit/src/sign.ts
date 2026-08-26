@@ -10,8 +10,8 @@
  * This module is the server-side half: the Enterprise branded API, where a
  * partner does hold a key of its own and signs for its callers (`venue.ts`).
  *
- * THE CANONICAL STRING, taken from the server that verifies it
- * (`backend/services/indexer/src/auth.rs`) rather than from any client:
+ * THE CANONICAL STRING, taken from the server that verifies it — the exchange's
+ * own auth-signing implementation — rather than from any client:
  *
  *     <timestamp_ms>\n<METHOD>\n<path>\n<query>\n<sha256hex(body)>
  *

@@ -5,11 +5,10 @@
  * the adapter in ./api/seasons.ts, so the parsing path is genuinely exercised
  * rather than bypassed. Swapping this for `fetch` should change this file only.
  *
- * The numbers track the modelled ramp in
- * `personal/daniel/pod-roadmaps/proposals/growth-engine/model/seasons-model.ipynb`:
- * a 4-week season, a pool that starts near $38k and ramps, scoring weights that
- * rotate from volume toward depth, and ladders that lengthen as the programme
- * matures.
+ * The numbers track the growth-programme model this feature was designed
+ * against: a 4-week season, a pool that starts near $38k and ramps, scoring
+ * weights that rotate from volume toward depth, and ladders that lengthen as
+ * the programme matures.
  */
 
 import {

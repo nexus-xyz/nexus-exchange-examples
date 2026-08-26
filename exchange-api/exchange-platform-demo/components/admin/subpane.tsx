@@ -148,8 +148,8 @@ export function SubPaneTabs({
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
-            /* floor.json's segmented tier is a 36–40 band and TAP_CONTROL is
-               38. A tab strip is the control most often aimed at with a thumb,
+            /* This project's segmented tap-target tier is a 36–40 band and
+               TAP_CONTROL is 38. A tab strip is the control most often aimed at with a thumb,
                and 9px type alone gives it a 24px box. */
             minHeight: TAP_CONTROL,
             padding: "6px 11px",

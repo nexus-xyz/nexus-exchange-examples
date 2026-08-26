@@ -3,9 +3,9 @@
 /*
  * The two modals behind the Portfolio header's `View Volume` and `View Fee Schedule`.
  *
- * Built from `audit/reference/shots/portfolio/portfolio.{volume-history,fee-schedule}
- * .desktop.jpg`, captured from a connected session — neither is reachable logged out,
- * which is why they were unknown until now.
+ * Built from captured screenshots of the reference venue's volume-history and
+ * fee-schedule surfaces, captured from a connected session — neither is reachable
+ * logged out, which is why they were unknown until now.
  *
  * They are the same dialog shell, and the shell is the one `DepositModal` already
  * uses: fixed, centred, Escape to close, a click-off shield, and a `role="dialog"`
