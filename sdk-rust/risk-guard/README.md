@@ -15,6 +15,13 @@ BREACHED  max-notional=within max-loss=breached  resting=2
   cancelled every resting order on this account (2 seen this tick)
 ```
 
+This is the Rust member of a set: the same app, same limits and same posture
+exist as `risk-guard` under [`sdk-ts/`](../../sdk-ts) and
+[`sdk-python/`](../../sdk-python), and as `risk-review` over MCP under
+[`sdk-mcp/`](../../sdk-mcp). Reading two of them side by side is the point — the
+differences are the ones the language and the SDK actually impose, not stylistic
+ones.
+
 ## What it does, and what you learn from it
 
 The app is small on purpose. `exchange-api/trading-terminal` builds a trading
