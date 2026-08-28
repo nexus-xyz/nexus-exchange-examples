@@ -1,0 +1,48 @@
+# The whole dependency set, every version pinned by `==`, per CONTRIBUTING § 3.
+#
+# There is no lockfile format here to commit, so this file has to be one: a pin
+# on `nexus-exchange` alone is not reproducible, because its transitive tree
+# would still float and a reader a year from now would get different bytes than
+# the README describes. So the SDK's dependencies are pinned too, at the versions
+# this example was verified against.
+#
+# Self-contained on purpose: no `-r`/`-c` includes, no `-e`, no alternate index.
+# The `==` pins are only a guarantee if this file is the entire set.
+
+# The Python SDK this example is about.
+nexus-exchange==0.4.0
+
+# --- nexus-exchange's tree ---------------------------------------------------
+annotated-types==0.8.0
+anyio==4.14.2
+bitarray==3.10.1
+certifi==2026.7.22
+ckzg==2.1.8
+cytoolz==1.1.0
+eth-abi==6.0.0b1
+eth-account==0.13.7
+eth-hash==0.8.0
+eth-keyfile==0.8.1
+eth-keys==0.8.0
+eth-rlp==2.2.0
+eth-typing==6.0.0
+eth-utils==6.0.0
+h11==0.16.0
+hexbytes==2.0.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.19
+parsimonious==0.10.0
+pycryptodome==3.23.0
+pydantic==2.13.4
+pydantic-core==2.46.4
+regex==2026.7.19
+rlp==4.1.0
+toolz==1.1.0
+typing-extensions==4.16.0
+typing-inspection==0.4.4
+
+# --- the typechecker CI runs, and its tree -----------------------------------
+mypy==2.3.1
+mypy-extensions==1.1.0
+pathspec==1.1.1
