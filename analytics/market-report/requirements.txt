@@ -1,0 +1,13 @@
+# Everything this example needs at runtime is in the Python standard library.
+#
+# That is not minimalism for its own sake: the official Python SDK
+# (`nexus-exchange`) is not published on PyPI yet — its own README says "once
+# published; for now, install from source" — and CONTRIBUTING.md requires this
+# file to be the whole dependency set with every version pinned by `==`. A
+# `git+https://` requirement cannot be pinned that way, so an example that must
+# install from a lockfile cannot depend on the SDK today. When it ships, this is
+# the line to add.
+#
+# So the only pin here is the typechecker CI runs. Pinned exactly, like every
+# other version in this repo.
+mypy==2.3.1

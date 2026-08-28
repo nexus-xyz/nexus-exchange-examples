@@ -135,6 +135,23 @@ jobs:
       - name: Typecheck
         working-directory: ${{ matrix.dir }}
         run: mypy .
+      # An example that ships tests is making a correctness claim, and a claim
+      # nothing re-checks is one that rots. Tests are not required — most
+      # examples are better served by being short enough to read — so the one
+      # failure forgiven here is `unittest`'s exit 5, "found nothing at all",
+      # and it says so out loud rather than passing silently. Discovery is run
+      # either way, so a suite that moved is still found; a suite that broke is
+      # still a failure.
+      - name: Test
+        working-directory: ${{ matrix.dir }}
+        run: |
+          python -m unittest discover -v && exit 0
+          status=$?
+          if [ "$status" -eq 5 ]; then
+            echo "no tests found in ${{ matrix.dir }} — nothing to run"
+            exit 0
+          fi
+          exit "$status"
 
   shell:
     name: shell · ${{ matrix.dir }}

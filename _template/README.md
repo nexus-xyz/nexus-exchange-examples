@@ -35,9 +35,10 @@ Then, in the copy:
 
 ## Starting an example in another language
 
-There's no stub for Rust, Python, or the CLI yet — the track-2 seed examples will
-serve as those references once they land. Until then, copy the README template
-and follow the same standards:
+There's no stub for Rust or Python yet — the track-2 seed examples will serve as
+those references once they land. For a CLI workflow, read
+[`cli/quote-ladder`](../cli/quote-ladder), which is a worked example of the
+shape. Either way, copy the README template and follow the same standards:
 
 ```bash
 mkdir -p analytics/my-example

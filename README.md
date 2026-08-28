@@ -60,21 +60,25 @@ don't ship a client for.
 | --- | --- | --- |
 | Rust | [`sdk-rust/`](./sdk-rust) | _None yet._ |
 | TypeScript | [`sdk-ts/`](./sdk-ts) | [`risk-guard/`](./sdk-ts/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
-| Python | [`sdk-python/`](./sdk-python) | _None yet._ |
+| Python | [`sdk-python/`](./sdk-python) | [`risk-guard/`](./sdk-python/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
 | MCP | [`sdk-mcp/`](./sdk-mcp) | _None yet._ |
 
 ### Track 3 — [`cli/`](./cli) · CLI-driven workflows
 
 Apps built by scripting [`nexus-exchange-cli`](https://github.com/nexus-xyz/nexus-exchange-cli).
 
-_None yet._
+| Example | What it shows |
+| --- | --- |
+| [`quote-ladder/`](./cli/quote-ladder) | A ladder of resting post-only orders, kept on one market by a script you can put in a crontab: a reconciler over the CLI, idempotent through derived client order ids, with exact decimal money arithmetic in bash and a single-writer lock. |
 
 ### Track 4 — [`analytics/`](./analytics) · market-data and history tools
 
 Tools built on the market-data and history endpoints — reporting, backtesting,
 and analysis rather than order placement.
 
-_None yet._
+| Example | What it shows |
+| --- | --- |
+| [`market-report/`](./analytics/market-report) | A venue-wide market report — candles, funding, volume and the venue's own event stats — written to a terminal table, a CSV and a self-contained HTML page. No credentials, no dependencies, and mostly about the data validation an analytics tool needs before it computes anything. |
 
 ### Track 5 — builder codes
 
