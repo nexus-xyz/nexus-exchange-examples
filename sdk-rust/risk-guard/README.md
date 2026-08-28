@@ -44,6 +44,17 @@ attention. So `src/risk.rs` reports `Within`, `Breached`, or `Unknown`, and
 app does not trust is its own failure mode, so it says the limit cannot be proven
 and leaves it to a human.
 
+`Unknown` is not a licence to stop reasoning, though, and getting that wrong is
+the mirror image of the same bug. `notional_value` is `|size| × mark price`, so
+it is never negative, which makes a partial sum a **lower bound** on the true
+total. If that bound already exceeds the limit, nothing missing can bring it back
+under — the breach is *proven*, and the guard fires on it. `Unknown` is reserved
+for the case where the missing values could still land either side of the limit.
+The same argument run the other way covers flat positions: at `size == 0` the
+notional is provably zero whatever the mark price is, so a dust position in an
+unmirrored market is skipped rather than allowed to weigh on `max-notional` from
+then on.
+
 **`tokio::select!` drops the losing future, and that is a live hazard here.** A
 future dropped at an await point stops mid-request, with no unwinding and no
 completion. Wrapping the cancel in a `select!` against a shutdown signal — the
@@ -173,11 +184,14 @@ rather than a silently-upgraded SDK.
   worst failure this app could have: nothing restarts it, and nobody is told the
   account is now unwatched.
 - `Unknown` is strict where it can hide exposure and nowhere else. A position
-  with no mark price makes the notional total unprovable — but a *flat* position
-  contributes `|size| × mark price = 0` whatever the mark is, so it is skipped.
-  Otherwise one dust position in an unmirrored market would pin `max-notional`
-  to `Unknown` on every tick from then on, and a limit that can never be proven
-  is a limit that never checks anything.
+  with no mark price leaves the notional total unprovable *in one direction
+  only*: the positions that do report still bound it from below, so a bound
+  already over the limit is a breach the guard acts on, and `Unknown` is kept
+  for the total that could still land either side. A *flat* position contributes
+  `|size| × mark price = 0` whatever the mark is, so it is skipped entirely —
+  otherwise one dust position in an unmirrored market would weigh on
+  `max-notional` on every tick from then on, and a limit that can never be
+  proven within is a limit that never checks anything.
 - There is no "already fired" latch. The condition is *breached and orders
   exist*, so a successful cancel makes the next tick a no-op by itself, while an
   order placed during a still-live breach is caught on the tick after it appears.

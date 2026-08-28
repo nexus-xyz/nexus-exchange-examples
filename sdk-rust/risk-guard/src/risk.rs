@@ -20,6 +20,16 @@
 //!
 //! So a limit whose inputs are incomplete reports `Unknown`, never `Within`,
 //! and the caller treats that as "cannot prove safe" rather than "safe".
+//!
+//! Incomplete is not the same as undecidable, though, and the difference is
+//! load-bearing in the other direction. `notional_value` is `|size| × mark
+//! price` and so is never negative, so the positions that *do* report give a
+//! lower bound on the total — and a lower bound already over the cap proves the
+//! breach whatever the missing values turn out to be. `Unknown` is for what
+//! genuinely cannot be decided, not for everything that is merely incomplete: a
+//! guard that answered `Unknown` on an account provably over its limit would be
+//! declining to act on a fact it was already holding, during exactly the
+//! partial-outage this module exists to survive.
 
 use nexus_exchange::types::Position;
 use rust_decimal::Decimal;
@@ -60,21 +70,31 @@ impl Verdict {
 
 /// Total notional across open positions.
 ///
-/// Returns `Err` with the offending markets — not a partial sum — when any
-/// position that could contribute cannot report its notional. A partial sum is
-/// the dangerous answer: it is smaller than the truth and therefore likelier to
-/// sit under the limit. Either every position counts or the total is unknown.
+/// When every position reports, the answer is exact. When some do not, the
+/// caller gets `Err` carrying the sum of the ones that did — a *lower bound*,
+/// labelled as one, together with the markets that are missing. What it must
+/// never be is a partial sum handed back as if it were a total: that answer is
+/// smaller than the truth and therefore likelier to sit under a limit, which is
+/// the dangerous direction to be wrong in.
 ///
-/// The one exception is a position with zero size, and it is not a softening of
-/// that rule. `notional_value` is defined as `|size| × mark price`, so a flat
-/// position contributes provably nothing whatever the mark price is, and its
-/// missing mark price says nothing about the account's exposure. Without this,
-/// a single flat or dust position in a market the indexer has stopped mirroring
-/// would pin `max-notional` to `Unknown` on every tick from then on — and a
-/// limit that is permanently unprovable is a limit that never checks anything,
-/// including the genuine breach happening elsewhere in the account. Strictness
-/// is kept exactly where it can hide exposure.
-fn total_notional(positions: &[Position]) -> Result<Decimal, Vec<String>> {
+/// The bound itself is worth carrying, though, because it is a real fact.
+/// `notional_value` is defined as `|size| × mark price` and so is never
+/// negative, which means no missing position can *reduce* the total. Once the
+/// bound is over the cap the breach is proven, and no mark price that later
+/// arrives can bring it back under. [`evaluate`] uses that to fire on a breach
+/// it would otherwise have had to call `Unknown` — the case where the guard
+/// would sit and watch an account that is provably over its limit.
+///
+/// The one exception to counting a position at all is zero size, and it is not
+/// a softening of that rule. `notional_value` is `|size| × mark price`, so a
+/// flat position contributes provably nothing whatever the mark price is, and
+/// its missing mark price says nothing about the account's exposure. Without
+/// this, a single flat or dust position in a market the indexer has stopped
+/// mirroring would leave `max-notional` with a missing market on every tick from
+/// then on — and while the lower bound above rescues the already-over case, an
+/// account sitting under its limit would never again be provably `Within`.
+/// Strictness is kept exactly where it can hide exposure.
+fn total_notional(positions: &[Position]) -> Result<Decimal, (Decimal, Vec<String>)> {
     let mut total = Decimal::ZERO;
     let mut missing = Vec::new();
     for position in positions {
@@ -98,7 +118,7 @@ fn total_notional(positions: &[Position]) -> Result<Decimal, Vec<String>> {
     if missing.is_empty() {
         Ok(total)
     } else {
-        Err(missing)
+        Err((total, missing))
     }
 }
 
@@ -115,22 +135,37 @@ pub fn evaluate(
     let mut findings = Vec::new();
 
     if let Some(cap) = limits.max_notional {
-        match total_notional(positions) {
-            Ok(total) => findings.push(Finding {
+        findings.push(match total_notional(positions) {
+            Ok(total) => Finding {
                 limit: "max-notional",
                 state: if total > cap { State::Breached } else { State::Within },
                 detail: format!("notional {total} vs limit {cap}"),
-            }),
-            Err(missing) => findings.push(Finding {
+            },
+            // Over the limit on the positions that do report is a breach that
+            // nothing missing can undo, so the guard acts on what it can prove.
+            Err((at_least, missing)) if at_least > cap => Finding {
+                limit: "max-notional",
+                state: State::Breached,
+                detail: format!(
+                    "notional is at least {at_least} vs limit {cap} — already over on \
+                     the positions that do report, so no mark price for {} can bring \
+                     it back under.",
+                    missing.join(", ")
+                ),
+            },
+            // The genuine unknown: the missing values could still land either
+            // side of the limit, so the total is unproven rather than safe.
+            Err((at_least, missing)) => Finding {
                 limit: "max-notional",
                 state: State::Unknown,
                 detail: format!(
-                    "cannot total notional — no mark price for {}. \
-                     Treating exposure as unproven rather than as zero.",
+                    "cannot total notional — no mark price for {}. Counted {at_least} so \
+                     far, which is not over the limit of {cap}, so the true total could \
+                     fall either side. Treating exposure as unproven rather than as zero.",
                     missing.join(", ")
                 ),
-            }),
-        }
+            },
+        });
     }
 
     if let Some(cap) = limits.max_loss {
