@@ -4,10 +4,10 @@ An agent-shaped risk review of one Nexus Exchange account, over the **MCP tool
 surface**.
 
 It performs the same check as the `risk-guard` examples under
-[`sdk-rust/`](../../sdk-rust) and [`sdk-ts/`](../../sdk-ts) — total notional,
-unrealized loss, available margin, against limits you set — but reaches the
-exchange through MCP tools rather than a typed SDK. It is read-only: it reports,
-and changes nothing.
+[`sdk-rust/`](../../sdk-rust), [`sdk-ts/`](../../sdk-ts) and
+[`sdk-python/`](../../sdk-python) — total notional, unrealized loss, available
+margin, against limits you set — but reaches the exchange through MCP tools
+rather than a typed SDK. It is read-only: it reports, and changes nothing.
 
 ```text
 risk-review on the testnet deployment (play funds)
@@ -20,7 +20,7 @@ ok max-notional: notional 812.40 vs limit 1000
 
 BREACHED — at least one limit is over.
   3 resting order(s) would be worth cancelling. This app does not cancel —
-  see sdk-rust/risk-guard for the armed version.
+  see the risk-guard examples for the armed version.
 ```
 
 ## What you learn from it

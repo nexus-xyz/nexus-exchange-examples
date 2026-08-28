@@ -77,7 +77,7 @@ const READ_ONLY_PREFIXES = ["get_", "list_", "preview_"];
  * Seen for real — an edge proxy answers an invalid signature with an HTML 403.
  *
  * Truncating an error feels wrong until you notice the alternative is losing it
- * in its own noise. The same guard exists in both sibling `risk-guard` examples.
+ * in its own noise. The same guard exists in the sibling `risk-guard` examples.
  */
 function oneLine(detail: string): string {
   const flat = detail.replace(/\s+/g, " ").trim();

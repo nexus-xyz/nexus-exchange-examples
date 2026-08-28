@@ -2,10 +2,11 @@
 //
 // Run it with:  npm start
 //
-// This is the same review `sdk-rust/risk-guard` and `sdk-ts/risk-guard` perform
-// — total notional, unrealized loss, available margin, against limits you set —
-// but reached through the MCP tool surface instead of a typed SDK. It is
-// read-only: it reports, and changes nothing.
+// This is the same review the `risk-guard` examples under `sdk-rust/`,
+// `sdk-ts/` and `sdk-python/` perform — total notional, unrealized loss,
+// available margin, against limits you set — but reached through the MCP tool
+// surface instead of a typed SDK. It is read-only: it reports, and changes
+// nothing.
 //
 // What an MCP example has to show that an SDK example does not
 // ------------------------------------------------------------
@@ -163,7 +164,7 @@ async function review(session: Session, config: Config): Promise<boolean> {
       // edit rather than a quiet capability.
       log(
         `  ${orders.length} resting order(s) would be worth cancelling. This app ` +
-          "does not cancel — see sdk-rust/risk-guard for the armed version.",
+          "does not cancel — see the risk-guard examples for the armed version.",
       );
     }
   } else if (verdict.indeterminate) {
