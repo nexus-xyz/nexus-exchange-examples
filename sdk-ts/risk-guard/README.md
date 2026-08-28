@@ -16,10 +16,12 @@ cancels every resting order the moment a limit is breached.
 23:57:34    cancelled every resting order on this account (2 seen this tick)
 ```
 
-This is the TypeScript twin of the Rust `risk-guard` under
-[`sdk-rust/`](../../sdk-rust) — same app, same limits, same posture — so the two
-read as a set and the differences are the ones the language and SDK actually
-impose.
+This is the TypeScript member of a set: the same app, same limits and same
+posture exist as `risk-guard` under [`sdk-rust/`](../../sdk-rust) and
+[`sdk-python/`](../../sdk-python), and as `risk-review` over MCP under
+[`sdk-mcp/`](../../sdk-mcp). Reading two of them side by side is the point — the
+differences are the ones the language and the SDK actually impose, not stylistic
+ones.
 
 ## What it does, and what you learn from it
 
