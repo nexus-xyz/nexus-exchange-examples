@@ -20,7 +20,7 @@ it checks for, measured rather than imagined.
 $ python3 report.py
 Nexus Exchange market report — 2026-08-20 03:14:12Z
 ──────────────────────────────────────────────────────────────────────────────────────
-host          https://exchange.nexus.xyz/api/exchange  (spec v0.8.1, testnet, play funds)
+host          https://api.testnet.nexus.xyz/indexer  (spec v0.8.1, testnet, play funds)
 window        24h at 5m = 289 buckets requested
 requests      13 fetched, 0 served from cache
 venue         health healthy, ingest lag 6 ms, sequence gaps 0
