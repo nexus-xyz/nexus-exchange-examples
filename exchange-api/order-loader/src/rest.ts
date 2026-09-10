@@ -163,6 +163,27 @@ function parseBucketLabel(value: unknown): WireBucket | null {
     : null;
 }
 
+/**
+ * The pathname a request for `path` will actually carry on the wire.
+ *
+ * Exported so it can be checked directly — see `rest.test.ts`. It is the
+ * left-hand side of the signing guard below, and getting it wrong disables an
+ * app rather than degrading it.
+ *
+ * The trailing-slash strip is the whole of the subtlety. A base with **no**
+ * path prefix — a loopback venue on `http://127.0.0.1:9090`, or the bare
+ * testnet host — has `pathname === "/"`, and concatenating that with a `path`
+ * that already starts with `/` yields `//api/v1/...`, which never equals what
+ * the URL parser produces. The guard would then fire on every single request
+ * and the app could not talk to that deployment at all. It escapes notice
+ * against `https://api.testnet.nexus.xyz/indexer`, where `.pathname` is
+ * `/indexer` and the concatenation happens to come out right — which is
+ * exactly why it is worth a test rather than a second reading.
+ */
+export function wirePath(baseUrl: string, path: string): string {
+  return `${new URL(baseUrl).pathname.replace(/\/+$/, "")}${path}`;
+}
+
 function headerInteger(response: Response, name: string): number | null {
   const raw = response.headers.get(name);
   if (raw === null) return null;
@@ -226,7 +247,7 @@ export class RestClient {
     // segments, and it is free to re-encode characters our own
     // `encodeURIComponent` left alone.
     const parsed = new URL(url);
-    const expectedPath = `${new URL(this.config.baseUrl).pathname}${path}`;
+    const expectedPath = wirePath(this.config.baseUrl, path);
     if (parsed.pathname !== expectedPath) {
       throw new Error(
         `path would be rewritten on the wire (${expectedPath} → ` +

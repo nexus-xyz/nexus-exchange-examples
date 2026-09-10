@@ -263,6 +263,11 @@ documentation; this is the map.
 | [`rest.ts`](./src/rest.ts) | One hardened, budget-paced request: deadlines, bounded bodies, retry policy. |
 | [`loader.ts`](./src/loader.ts) | Preview, submit, reconcile, cancel. |
 | [`index.ts`](./src/index.ts) | Wiring and lifecycle. |
+| [`rest.test.ts`](./src/rest.test.ts) | One regression test, over the path composition the signing guard compares against. |
+
+`npm test` runs that test. There is nothing to compile here, so the `build`
+script runs it too — CI runs `typecheck` and `build`, and a test the gate never
+executes is a correctness claim nothing re-checks.
 
 Four decisions beyond the rate-limit model are worth copying.
 
