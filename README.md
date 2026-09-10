@@ -70,6 +70,7 @@ Apps built by scripting [`nexus-exchange-cli`](https://github.com/nexus-xyz/nexu
 | Example | What it shows |
 | --- | --- |
 | [`quote-ladder/`](./cli/quote-ladder) | A ladder of resting post-only orders, kept on one market by a script you can put in a crontab: a reconciler over the CLI, idempotent through derived client order ids, with exact decimal money arithmetic in bash and a single-writer lock. |
+| [`preflight-doctor/`](./cli/preflight-doctor) | Why you cannot reach the venue, one check at a time: DNS, the base URL's path prefix, the WebSocket base, clock skew, and only then credentials. Separates a wrong prefix (404) from a reachable venue refusing you (401) from a venue that is simply down (503). Read-only, and its output is safe to paste into a bug report. |
 
 ### Track 4 — [`analytics/`](./analytics) · market-data and history tools
 
