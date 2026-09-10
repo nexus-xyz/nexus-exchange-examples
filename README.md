@@ -58,7 +58,7 @@ don't ship a client for.
 
 | SDK | Directory | Examples |
 | --- | --- | --- |
-| Rust | [`sdk-rust/`](./sdk-rust) | [`risk-guard/`](./sdk-rust/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
+| Rust | [`sdk-rust/`](./sdk-rust) | [`risk-guard/`](./sdk-rust/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached · [`liquidation-watch/`](./sdk-rust/liquidation-watch) — how far each mark can move before maintenance margin breaks, ranked by fragility, next to the venue's own ADL record |
 | TypeScript | [`sdk-ts/`](./sdk-ts) | [`risk-guard/`](./sdk-ts/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
 | Python | [`sdk-python/`](./sdk-python) | [`risk-guard/`](./sdk-python/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
 | MCP | [`sdk-mcp/`](./sdk-mcp) | [`risk-review/`](./sdk-mcp/risk-review) — reviews one account over the MCP tool surface, with an explicit read-only allowlist |
