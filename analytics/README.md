@@ -10,6 +10,7 @@ funding-history report in Python belongs here, not in `sdk-python/`. See the
 | Example | What it shows |
 | --- | --- |
 | [`market-report/`](./market-report) | A venue-wide report over candles, funding and the venue's own event stats — terminal, CSV and a self-contained HTML page. Mostly a lesson in validating a venue's history before computing on it: this API answers a request for daily candles with minute candles, and says nothing. |
+| [`account-statement/`](./account-statement) | A P&L, fee and funding statement for your own account over a period, reconciled against the venue's own equity curve — and reporting the residual instead of forcing the two to agree. Lossless decimal money end to end, including one field whose wire type disagrees with the spec. |
 
 Adding one? See [CONTRIBUTING.md](../CONTRIBUTING.md). One example per directory:
 `analytics/<example-name>/`.
