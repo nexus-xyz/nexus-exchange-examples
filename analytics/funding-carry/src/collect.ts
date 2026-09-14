@@ -151,6 +151,15 @@ interface SettledAnswer {
   readonly windows: readonly SettledWindow[];
   /** `x-indexer-lag-ms`, which rides this response. Null when absent. */
   readonly lagMs: number | null;
+  /**
+   * The page came back full, so there is very likely more history the single
+   * request above never saw.
+   *
+   * `>=` rather than `===` because the endpoint CLAMPS rather than rejects an
+   * over-large limit (see `FUNDING_LIMIT`), so a future server that answered
+   * more than we asked for would still be truncation from our side.
+   */
+  readonly truncated: boolean;
 }
 
 async function readSettled(
@@ -172,6 +181,7 @@ async function readSettled(
   return {
     windows: [...rows].sort((a, b) => a.timestampMs - b.timestampMs),
     lagMs: headerInteger(answer.headers, "x-indexer-lag-ms"),
+    truncated: rows.length >= FUNDING_LIMIT,
   };
 }
 
@@ -234,6 +244,8 @@ export async function collect(
     readonly settled: readonly SettledWindow[];
     readonly risk: RiskParams | null;
     readonly premiumSamples: number;
+    /** See `SettledAnswer.truncated`. Excludes the market from the ranking. */
+    readonly truncated: boolean;
   }
   const raws: Raw[] = [];
   let indexerLagMs: number | null = null;
@@ -241,9 +253,20 @@ export async function collect(
   for (const entry of candidates) {
     progress(`${entry.marketId}: funding, funding-samples, risk-params`);
     let settled: readonly SettledWindow[] = [];
+    let truncated = false;
     try {
       const answer = await readSettled(client, watch, entry.marketId);
       settled = answer.windows;
+      truncated = answer.truncated;
+      if (truncated) {
+        warnings.push(
+          `${entry.marketId}: funding history came back full at the ` +
+            `${FUNDING_LIMIT}-window maximum, so there is history this run did ` +
+            "not read. The market is listed but NOT ranked: a carry and a " +
+            "dispersion computed here would be labelled with a look-back the " +
+            "sample does not cover.",
+        );
+      }
       // Kept from whichever response last carried it: it is a property of the
       // deployment, not of the market, so the newest reading is the one worth
       // reporting.
@@ -265,7 +288,7 @@ export async function collect(
           "initial rate anyway and this line is the flag.",
       );
     }
-    raws.push({ entry, settled, risk, premiumSamples });
+    raws.push({ entry, settled, risk, premiumSamples, truncated });
   }
 
   const localNowMs = Date.now();
@@ -289,7 +312,12 @@ export async function collect(
     const crossCheck = crossCheckSigns(inWindow);
     const initialMarginRate = raw.risk?.initialMarginRate ?? null;
 
-    const excluded = excludeReason(inWindow.length, config.minSamples, interval);
+    const excluded = excludeReason(
+      inWindow.length,
+      config.minSamples,
+      interval,
+      raw.truncated,
+    );
     const annualised =
       stats !== null && interval !== null && excluded === null
         ? annualise({ stats, interval, initialMarginRate })
@@ -303,6 +331,7 @@ export async function collect(
       interval,
       crossCheck,
       returnedWindows: raw.settled.length,
+      truncated: raw.truncated,
       firstMs: inWindow[0]?.timestampMs ?? null,
       lastMs: inWindow.at(-1)?.timestampMs ?? null,
       premiumSamples: raw.premiumSamples,
@@ -341,7 +370,19 @@ function excludeReason(
   samples: number,
   minSamples: number,
   interval: Interval | null,
+  truncated: boolean,
 ): string | null {
+  // FIRST, because it invalidates the series rather than describing it. The
+  // three refusals below all reason about what was read; this one is about what
+  // was NOT read, and no amount of agreement among the windows we have tells us
+  // anything about the ones we do not.
+  if (truncated) {
+    return (
+      `funding history was truncated at the ${FUNDING_LIMIT}-window server ` +
+      "maximum, so the look-back this row would be labelled with is longer " +
+      "than the sample behind it"
+    );
+  }
   if (samples === 0) {
     return "no settled funding windows inside the look-back";
   }

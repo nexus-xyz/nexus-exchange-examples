@@ -279,6 +279,11 @@ export interface MarketCarry {
   readonly crossCheck: SignCrossCheck;
   /** Windows the endpoint returned in total, before the look-back filter. */
   readonly returnedWindows: number;
+  /**
+   * The funding page came back full, so history is missing. Such a market is
+   * always excluded from the ranking — see `excludeReason`.
+   */
+  readonly truncated: boolean;
   /** Oldest and newest settled window inside the look-back. */
   readonly firstMs: number | null;
   readonly lastMs: number | null;
