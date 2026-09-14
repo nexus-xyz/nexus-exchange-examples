@@ -467,8 +467,21 @@ sever_marker_path() { printf '%s/severed/%s' "$MONITOR_STATE_DIR" "$1"; }
 gap_marker_path()   { printf '%s/gap/%s' "$MONITOR_STATE_DIR" "$1"; }
 
 markers_init() {
-  mkdir -p -- "$MONITOR_STATE_DIR/count" "$MONITOR_STATE_DIR/severed" "$MONITOR_STATE_DIR/gap"
-  rm -f -- "$MONITOR_STATE_DIR"/count/* "$MONITOR_STATE_DIR"/severed/* "$MONITOR_STATE_DIR"/gap/* 2>/dev/null || true
+  mkdir -p -- "$MONITOR_STATE_DIR/count" "$MONITOR_STATE_DIR/severed" \
+    "$MONITOR_STATE_DIR/gap" "$MONITOR_STATE_DIR/seen"
+  # `seen/` TOO. It is documented as per-run ("Kept per run, not per cursor",
+  # `cursor.sh`; "grows for the life of a run", README) and nothing implemented
+  # that lifetime -- only `--reset` ever removed it.
+  #
+  # Leaving it made the EVIDENCE of a hole outlive its EXPLANATION: `gap/` and
+  # `severed/`, which record why a hole was legitimate, are wiped here, so a
+  # hole run N recorded as `recovered` was re-judged by run N+1 with the reason
+  # gone. A completely clean run 2 delivering 501,502 after a run 1 that
+  # delivered 101,102 reported `LOSSY  missing 103-500 ... nothing explains
+  # this hole` and exited 4 -- the documented "the failure the app exists to
+  # detect", on a run that lost nothing.
+  rm -f -- "$MONITOR_STATE_DIR"/count/* "$MONITOR_STATE_DIR"/severed/* \
+    "$MONITOR_STATE_DIR"/gap/* "$MONITOR_STATE_DIR"/seen/* 2>/dev/null || true
 }
 
 # Increment and echo. Not atomic across processes — but each channel has

@@ -128,7 +128,23 @@ cleanup() {
   local pgid
   pgid=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
   if [[ $pgid == "$$" ]]; then
+    # IGNORE THE SIGNAL WE ARE ABOUT TO SEND OURSELVES. `kill -- -$$` targets
+    # the whole group, and this shell is in it. `trap - EXIT INT TERM` above
+    # restored TERM to its DEFAULT disposition, so the shell died right here:
+    # `lock_release`, the `RUN_DIR` removal and `exit "$code"` below were never
+    # reached. Every interactive run exited 143 and leaked the lock directory
+    # and the run dir, which in turn made `lock_acquire`'s liveness check face
+    # a stale pid on the next run.
+    #
+    # It never showed up in the suite because `run_app` invokes the script
+    # WITHOUT job control, so the shell is not a process-group leader and this
+    # branch is skipped -- while `./run.sh` from a terminal IS one, so the
+    # branch is taken in exactly the mode the README documents. The practical
+    # consequence was that `EX_OK=0` and `EX_LOSSY=4` were unobservable from a
+    # terminal: the exit-code table was unreachable in the mode readers use.
+    trap '' TERM
     kill -- "-$$" 2>/dev/null || true
+    trap - TERM
   fi
   lock_release
   [[ -n $RUN_DIR && -d $RUN_DIR ]] && rm -rf -- "$RUN_DIR"

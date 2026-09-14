@@ -50,6 +50,20 @@
 # cursor_path <channel>
 cursor_path() { printf '%s/cursor/%s' "$MONITOR_STATE_DIR" "$1"; }
 seen_path()   { printf '%s/seen/%s' "$MONITOR_STATE_DIR" "$1"; }
+epoch_path()  { printf '%s/seen/%s.epoch' "$MONITOR_STATE_DIR" "$1"; }
+
+# seen_epoch <channel> -- which sequence numbering the channel is currently on.
+#
+# Starts at 1 and is bumped by `cursor_reset`. It exists so the delivered
+# journal can tell "seq 5 of this epoch" from "seq 5 of the one before it",
+# WITHOUT changing what the verdict is computed over -- see `seen_record`.
+seen_epoch() {
+  local file value
+  file=$(epoch_path "$1")
+  [[ -r $file ]] && read -r value <"$file" 2>/dev/null
+  is_sequence "${value:-}" || value=1
+  printf '%s' "$value"
+}
 
 cursor_init() {
   mkdir -p -- "$MONITOR_STATE_DIR/cursor" "$MONITOR_STATE_DIR/seen" ||
@@ -114,6 +128,29 @@ cursor_reset() {
   file=$(cursor_path "$channel")
   tmp="$file.$$"
   printf '%s\n' "$seq" >"$tmp" && mv -f -- "$tmp" "$file"
+
+  # BUMP THE EPOCH, do not clear the journal.
+  #
+  # The bug this closes is narrow: `seen_is_duplicate` was a flat set-membership
+  # test, so a NEW-epoch event whose number collided with an OLD-epoch one was
+  # dropped before it was ever emitted. Epoch A acking 4 and sending 5,6, then
+  # epoch B joining at 3 and sending 4,5,6,7, emitted `A/5 A/6 B/4 B/7` and
+  # reported `contiguous ... no gap`: two events lost, and the tool certifying
+  # the exact failure it exists to detect.
+  #
+  # Clearing the journal also closes it, and is wrong for a second reason:
+  # the cross-epoch hole is MEANT to surface. `seen_verdict` reports it, the
+  # `gap/` marker written here explains it, and the run lands on `recovered`.
+  # Truncating would make the same run print `contiguous 6..6` and say nothing
+  # about having crossed an epoch boundary at all -- trading a dropped-event
+  # bug for a hidden-boundary one.
+  #
+  # So the epoch scopes the DUPLICATE TEST only. The verdict is still computed
+  # over the raw sequence numbers, exactly as before.
+  local epoch
+  epoch=$(( $(seen_epoch "$channel") + 1 ))
+  printf '%s\n' "$epoch" >"$(epoch_path "$channel")"
+
   warn "$channel: cursor reset to $seq ($why)"
 }
 
@@ -132,9 +169,11 @@ cursor_forget() {
 # and no single number can also answer "was the run contiguous". A cursor of
 # 900 is consistent with having seen 1..900 and with having seen only 900.
 
+# `<epoch> <seq>`, two fields. The epoch scopes `seen_is_duplicate`; the verdict
+# reads field 2 and is unchanged by its presence.
 seen_record() {
   local channel=$1 seq=$2
-  printf '%s\n' "$seq" >>"$(seen_path "$channel")"
+  printf '%s %s\n' "$(seen_epoch "$channel")" "$seq" >>"$(seen_path "$channel")"
 }
 
 # seen_is_duplicate <channel> <seq> — has this sequence already been delivered?
@@ -152,7 +191,9 @@ seen_is_duplicate() {
   local channel=$1 seq=$2 file
   file=$(seen_path "$channel")
   [[ -s $file ]] || return 1
-  grep -qxF -- "$seq" "$file"
+  # Scoped to the CURRENT epoch. Across an epoch bump the same integer is a
+  # different event, and matching it would drop a real one.
+  grep -qxF -- "$(seen_epoch "$channel") $seq" "$file"
 }
 
 # seen_verdict <channel> — print `<status> <detail>` for the sequences seen.
@@ -172,7 +213,10 @@ seen_verdict() {
     printf 'idle no events were delivered on this channel'
     return 0
   fi
-  sort -n -u -- "$file" | awk '
+  # Field 2 is the sequence; field 1 is the epoch, which the verdict ignores on
+  # purpose -- a hole ACROSS an epoch boundary is still a hole worth reporting,
+  # and the `gap/` marker is what explains it into `recovered`.
+  awk '{ print $2 }' "$file" | sort -n -u | awk '
     NR == 1 { low = $1; prev = $1; next }
     {
       if ($1 != prev + 1) { gaps = gaps sep (prev + 1) "-" ($1 - 1); sep = "," }

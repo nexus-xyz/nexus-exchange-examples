@@ -80,6 +80,32 @@ run_app() {
   return 0
 }
 
+# WITH JOB CONTROL, which is how a reader runs it and how `run_app` does not.
+# `set -m` makes the script a process-group leader, which is the condition
+# `cleanup`'s `kill -- -$$` branch tests for. Every bug in that branch is
+# invisible to `run_app`; this is the only way to reach it from the suite.
+run_app_interactive() {
+  local out err
+  out=$(mktemp "${TMPDIR:-/tmp}/sm-out.XXXXXX")
+  err=$(mktemp "${TMPDIR:-/tmp}/sm-err.XXXXXX")
+  set -m
+  "$APP_DIR/run.sh" "$@" >"$out" 2>"$err"
+  STATUS=$?
+  set +m
+  OUT=$(cat "$out")
+  ERR=$(cat "$err")
+  rm -f -- "$out" "$err"
+  return 0
+}
+
+expect_no_lock() {
+  if [[ -e "$MONITOR_STATE_DIR/lock" ]]; then
+    fail "$CURRENT: the lock was released" "$MONITOR_STATE_DIR/lock still exists"
+  else
+    pass "$CURRENT: the lock was released"
+  fi
+}
+
 pass() { PASSED=$(( PASSED + 1 )); printf '  ok    %s\n' "$1"; }
 fail() {
   FAILED=$(( FAILED + 1 ))
@@ -552,6 +578,73 @@ EOF
 
 # ── main ────────────────────────────────────────────────────────────────────
 
+# ── regressions from #23's review ───────────────────────────────────────────
+
+# Finding 1. An epoch bump renumbers the channel, so a new-epoch event can
+# carry a sequence an old-epoch event already used. The journal was a flat set,
+# so the collision read as a duplicate and was dropped BEFORE reaching stdout,
+# and the verdict then certified the run contiguous over events it never
+# delivered. The reviewer's own scenario.
+test_epoch_collision_is_not_a_duplicate() {
+  start "an epoch bump does not swallow colliding sequences"
+  script_for fills 1
+  ws "$(ack fills 4)" "$(event fills 5)" "$(event fills 6)"
+  script_for fills 2
+  ws "$(ack fills 3)" "$(event fills 4)" "$(event fills 5)" "$(event fills 6)" "$(event fills 7)"
+
+  run_app --follow
+  # Two from epoch A, four from epoch B. Before the fix this was 4: B/5 and
+  # B/6 were dropped as "already seen", which is the whole bug.
+  expect_events 6
+  expect_says "cursor reset to 3"
+  finish
+}
+
+# Finding 2. `seen/` is documented as per-run and nothing implemented that, so
+# the EVIDENCE of a hole outlived its EXPLANATION -- `gap/` and `severed/` are
+# wiped at every run start and `seen/` was not. A clean run was then judged
+# against the previous run's sequences and reported LOSSY.
+test_a_clean_run_is_not_judged_by_the_previous_one() {
+  start "a clean run is not judged by the previous run's sequences"
+  script_for fills 1
+  ws "$(ack fills 100)" "$(event fills 101)" "$(event fills 102)"
+  run_app --follow
+
+  # Attempt counters persist across `run_app` within a test, so run 2's
+  # scripts are attempts 3 and 4.
+  script_for fills 3
+  ws "$(ack fills 500)" "$(event fills 501)" "$(event fills 502)"
+  script_for fills 4
+  ws "$(ack fills 502)"
+  run_app --follow
+
+  # The assertion is about the JOURNAL'S LIFETIME, not the verdict word: run 2
+  # must be judged over its own sequences only. Before the fix the range was
+  # `101..502` with a hole, because run 1's numbers were still in `seen/` while
+  # the `gap/` marker that would have explained them had been wiped.
+  expect_says "501..502"
+  expect_silent_about "101..502"
+  finish
+}
+
+# Finding 3. `cleanup` restored TERM to its default disposition and then
+# signalled its own process group, so the shell died before `lock_release`.
+# Only reachable with job control, which is why 72 tests never saw it.
+test_interactive_run_exits_clean_and_releases_the_lock() {
+  start "an interactive run exits clean and releases the lock"
+  script_for fills 1
+  ws "$(ack fills 10)" "$(event fills 11)"
+  script_for fills 2
+  ws "$(ack fills 11)"
+
+  run_app_interactive --follow
+  # 143 is SIGTERM -- the shell killing itself. It also means every line after
+  # the group kill was skipped, so the lock below is the same bug's other half.
+  expect_status 0
+  expect_no_lock
+  finish
+}
+
 for t in \
   test_resume_is_lossless \
   test_ack_does_not_outrun_the_replay \
@@ -574,7 +667,10 @@ for t in \
   test_generated_cli_config \
   test_status_touches_no_network \
   test_reset_forgets_cursors \
-  test_dotenv_is_parsed_not_sourced
+  test_dotenv_is_parsed_not_sourced \
+  test_epoch_collision_is_not_a_duplicate \
+  test_a_clean_run_is_not_judged_by_the_previous_one \
+  test_interactive_run_exits_clean_and_releases_the_lock
 do
   printf '\n%s\n' "$t"
   "$t"
