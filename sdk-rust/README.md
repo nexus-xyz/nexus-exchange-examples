@@ -8,6 +8,7 @@ see the [scope rule](../README.md#scope-whole-apps-here-api-demos-with-their-cli
 | Example | What it does |
 | --- | --- |
 | [`risk-guard`](./risk-guard) | Watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached. |
+| [`liquidation-watch`](./liquidation-watch) | Computes how far each mark can move before maintenance margin breaks, ranks positions by fragility, and puts the venue's own ADL record next to the estimate. Read-only. |
 
 Adding one? See [CONTRIBUTING.md](../CONTRIBUTING.md). One example per directory:
 `sdk-rust/<example-name>/`.

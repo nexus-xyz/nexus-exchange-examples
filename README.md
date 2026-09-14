@@ -53,12 +53,13 @@ don't ship a client for.
 | Example | What it shows |
 | --- | --- |
 | [`trading-terminal/`](./exchange-api/trading-terminal) | A terminal trading desk for one market: HMAC request signing by hand, the `op`-envelope WebSocket protocol, exact decimal money arithmetic, and a write path that places one order and guarantees it is cancelled. Zero runtime dependencies. |
+| [`order-loader/`](./exchange-api/order-loader) | A bulk order loader: a file of orders in, `POST /orders/batch` in weight-optimal chunks out, paced against the three rate-limit budgets it reads from `GET /account/rate-limit` rather than hardcoding from the tier table. Dry-runs by default, and cancels everything it placed at exit. |
 
 ### Track 2 — one whole app per SDK
 
 | SDK | Directory | Examples |
 | --- | --- | --- |
-| Rust | [`sdk-rust/`](./sdk-rust) | [`risk-guard/`](./sdk-rust/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
+| Rust | [`sdk-rust/`](./sdk-rust) | [`risk-guard/`](./sdk-rust/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached · [`liquidation-watch/`](./sdk-rust/liquidation-watch) — how far each mark can move before maintenance margin breaks, ranked by fragility, next to the venue's own ADL record |
 | TypeScript | [`sdk-ts/`](./sdk-ts) | [`risk-guard/`](./sdk-ts/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
 | Python | [`sdk-python/`](./sdk-python) | [`risk-guard/`](./sdk-python/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
 | MCP | [`sdk-mcp/`](./sdk-mcp) | [`risk-review/`](./sdk-mcp/risk-review) — reviews one account over the MCP tool surface, with an explicit read-only allowlist |
