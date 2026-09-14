@@ -58,9 +58,16 @@ probe_http() {
   # The body's first non-empty line, which for the two failures that matter is
   # the entire diagnosis: Envoy answers `fault filter abort` for a route it does
   # not have and `no healthy upstream` for one whose backend is gone.
+  #
+  # CUT AT THE BLANK LINE, not by excluding header-shaped lines. `grep -v
+  # '^[A-Za-z0-9-]*:'` does not drop the STATUS line -- `HTTP/1.1 404 Not Found`
+  # has a `/` before any `:`, so it fails the header pattern and survives, and
+  # the `-m1` below then selected it as "the body". `PROBE_BODY` was therefore
+  # always the status line, which is why the `fault filter abort` and `no
+  # healthy upstream` tests in `checks.sh` could never match.
   PROBE_BODY=$(printf '%s' "$raw" |
     sed -e '/^__DOCTOR__[0-9]*$/d' |
-    { grep -v '^[A-Za-z0-9-]*:' || true; } |
+    { sed -n '/^[[:space:]]*$/,$p' || true; } |
     { grep -m1 '[^[:space:]]' || true; })
   PROBE_BODY=${PROBE_BODY:0:200}
 
@@ -217,6 +224,29 @@ resolve_host() {
     RESOLVE_ADDRESSES=${RESOLVE_ADDRESSES% }
   fi
 
+  # THE SYSTEM RESOLVER, last, because `dig` and `host` both bypass it. They
+  # query DNS directly, so `/etc/hosts` is invisible to them and so is any
+  # split-horizon or NSS-provided mapping: `dig 127.0.0.1 A` answers NXDOMAIN.
+  # Without this, `DOCTOR_NETWORK=local` -- a documented first-class mode --
+  # reports "resolves to no address at all" against a venue that is up, and
+  # every downstream check skips on `DNS_OK`.
+  #
+  # A literal IPv4 address needs no resolver at all, so it is answered directly
+  # rather than asked about. `RESOLVE_RCODE` is cleared on success so the
+  # report does not append an NXDOMAIN note to an address that resolved.
+  if [[ -z $RESOLVE_ADDRESSES ]]; then
+    if [[ $host =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+      RESOLVE_ADDRESSES=$host
+      RESOLVE_RCODE=""
+    elif command -v getent >/dev/null 2>&1; then
+      RESOLVE_ADDRESSES=$(getent ahostsv4 "$host" 2>/dev/null |
+        { grep -E '^[0-9]+\.' || true; } | awk '{ print $1 }' | sort -u |
+        tr '\n' ' ') || true
+      RESOLVE_ADDRESSES=${RESOLVE_ADDRESSES% }
+      [[ -n $RESOLVE_ADDRESSES ]] && RESOLVE_RCODE=""
+    fi
+  fi
+
   if [[ -n $RESOLVE_ADDRESSES ]]; then
     # shellcheck disable=SC2086  # deliberate word splitting: counting addresses
     set -- $RESOLVE_ADDRESSES
@@ -238,6 +268,28 @@ WS_STATUS=0
 WS_HAS_ACCEPT=0
 WS_BODY=""
 WS_CLASS=""
+
+# ws_probe_url <ws-or-wss-url> -- the HTTP URL curl can actually dial.
+#
+# BOTH schemes, not just `wss:`. curl speaks no `ws:`/`wss:`, so the probe hands
+# it the HTTP equivalent. Rewriting only `wss:` left plain `ws:` untouched and
+# curl refuses it outright (`Protocol "ws" not supported`, exit 1), so
+# `WS_STATUS=0`, both `/stream` and `/ws` fall into the "nothing answered"
+# branch, and the tool blames "a proxy or firewall that allows HTTPS but blocks
+# an Upgrade" -- a confidently wrong diagnosis on every plain-HTTP deployment,
+# which is every `DOCTOR_NETWORK=local` run, since `config.sh` derives `ws://`
+# from any `http://` base.
+#
+# `wss:` tested first: `ws:` is a prefix of `wss:`, so the other order rewrites
+# `wss://host` into `https://s://host`.
+ws_probe_url() {
+  local url=$1
+  case $url in
+    wss:*) printf '%s' "https:${url#wss:}" ;;
+    ws:*) printf '%s' "http:${url#ws:}" ;;
+    *) printf '%s' "$url" ;;
+  esac
+}
 
 # probe_ws <wss-or-ws-url>
 #
@@ -268,7 +320,7 @@ probe_ws() {
     --header 'Upgrade: websocket' \
     --header 'Sec-WebSocket-Version: 13' \
     --header 'Sec-WebSocket-Key: AAAAAAAAAAAAAAAAAAAAAA==' \
-    "${url/#wss:/https:}" 2>"$DOCTOR_STDERR_FILE") || exit_code=$?
+    "$(ws_probe_url "$url")" 2>"$DOCTOR_STDERR_FILE") || exit_code=$?
 
   WS_STATUS=$(printf '%s' "$raw" | sed -n 's|^HTTP/1\.1 \([0-9]\{3\}\).*|\1|p' | tail -1) || true
   WS_STATUS=${WS_STATUS:-0}

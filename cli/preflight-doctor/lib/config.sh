@@ -114,14 +114,26 @@ resolve_network() {
     WS_BASE_SOURCE="the $DOCTOR_NETWORK default"
   fi
 
-  REST_HOST=${REST_BASE#*://}
+  # DISPLAY-SAFE COPIES, and they are not only about display. A base carrying
+  # `user:pass@` is a realistic way to reach an authenticating proxy, and it
+  # arrives from the environment -- so it reaches every report line and, in
+  # `--json`, a file a reader is invited to attach to a bug report.
+  REST_BASE_SAFE=$(url_without_userinfo "$REST_BASE")
+  WS_BASE_SAFE=$(url_without_userinfo "$WS_BASE")
+
+  # Derived from the SAFE base, which fixes a second bug behind the first:
+  # `${REST_HOST%%:*}` on `apiuser:pw@127.0.0.1:9391` yields `apiuser`, so the
+  # host every check reports -- and the name `resolve_host` actually looks up --
+  # was the proxy username, not the host. DNS then fails and every downstream
+  # check skips, against a venue that is up.
+  REST_HOST=${REST_BASE_SAFE#*://}
   REST_HOST=${REST_HOST%%/*}
   REST_HOST=${REST_HOST%%:*}
 
   # The prefix is whatever the base carries after the host. Reported on its own
   # line because it is the thing that is usually wrong, and a reader scanning
   # for it should not have to parse a URL by eye.
-  REST_PREFIX=${REST_BASE#*://}
+  REST_PREFIX=${REST_BASE_SAFE#*://}
   REST_PREFIX=${REST_PREFIX#"${REST_PREFIX%%/*}"}
   REST_PREFIX=${REST_PREFIX:-/}
 }

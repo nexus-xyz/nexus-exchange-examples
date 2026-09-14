@@ -116,12 +116,15 @@ report_header() {
   printf 'preflight-doctor  %s  (%s)\n' "$REST_HOST" "$DOCTOR_NETWORK"
   hr
   printf '%-12s%s\n' "network" "$DOCTOR_NETWORK — $NETWORK_FUNDS"
-  printf '%-12s%s\n' "rest base" "$REST_BASE"
+  printf '%-12s%s\n' "rest base" "$REST_BASE_SAFE"
   printf '%-12s%s\n' "  from" "$REST_BASE_SOURCE"
   printf '%-12s%s\n' "  prefix" "$REST_PREFIX"
-  printf '%-12s%s\n' "ws base" "$WS_BASE"
+  printf '%-12s%s\n' "ws base" "$WS_BASE_SAFE"
   printf '%-12s%s\n' "  from" "$WS_BASE_SOURCE"
-  printf '%-12s%s\n' "cli" "${CLI_VERSION_LINE:-not installed}"
+  # `redact`, because this is raw stdout from a foreign binary. It was the one
+  # place the CLI's output reached the report unfiltered, and a build token in
+  # a `--version` banner is registered and scrubbed everywhere else in the run.
+  printf '%-12s%s\n' "cli" "$(redact "${CLI_VERSION_LINE:-not installed}")"
   # Printed here, outside `record`, because the redactor's catch-all treats a
   # 32-hex string as a credential and would eat it. It is a server-issued
   # correlation id and the single most useful thing to quote in a support
@@ -174,9 +177,9 @@ report_json() {
   local i first=1
   printf '{\n'
   printf '  "network": "%s",\n' "$(json_escape "$DOCTOR_NETWORK")"
-  printf '  "rest_base": "%s",\n' "$(json_escape "$REST_BASE")"
+  printf '  "rest_base": "%s",\n' "$(json_escape "$REST_BASE_SAFE")"
   printf '  "rest_base_source": "%s",\n' "$(json_escape "$REST_BASE_SOURCE")"
-  printf '  "ws_base": "%s",\n' "$(json_escape "$WS_BASE")"
+  printf '  "ws_base": "%s",\n' "$(json_escape "$WS_BASE_SAFE")"
   printf '  "checked_at": "%s",\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   printf '  "verdict": "%s",\n' "$(worst_verdict)"
   printf '  "checks": [\n'

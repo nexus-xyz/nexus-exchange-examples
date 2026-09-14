@@ -238,6 +238,47 @@ record g fail "the venue rejected leaked-secret-value" "re-mint leaked-secret-va
 lacks "record redacts the finding"   "leaked-secret-value" "${CHECK_FINDINGS[0]}"
 lacks "record redacts the next step" "leaked-secret-value" "${CHECK_STEPS[0]}"
 
+# ── regression: the five findings from #21's review ─────────────────────────
+#
+# Each of these reproduces a bug that shipped, so a future refactor that
+# reintroduces one fails here rather than in a support channel.
+
+# B2/B1 — a base carrying `user:pass@` must never reach the report, and the
+# password is neither registered nor long enough for the catch-all, so `redact`
+# cannot save it. Stripping has to be structural.
+check "userinfo is stripped from an https base" \
+  "https://127.0.0.1:9391/indexer" \
+  "$(url_without_userinfo 'https://apiuser:hunter2-proxy-password@127.0.0.1:9391/indexer')"
+check "userinfo is stripped from a wss base" \
+  "wss://127.0.0.1:9391/indexer" \
+  "$(url_without_userinfo 'wss://apiuser:pw@127.0.0.1:9391/indexer')"
+check "a base without userinfo is untouched" \
+  "https://api.testnet.nexus.xyz/indexer" \
+  "$(url_without_userinfo 'https://api.testnet.nexus.xyz/indexer')"
+check "a base with no path is untouched" \
+  "http://localhost:8080" \
+  "$(url_without_userinfo 'http://localhost:8080')"
+# The LAST `@` before the path delimits userinfo, because a password may
+# contain one. Splitting on the first `@` would leave `ss@host` as the host.
+check "an @ inside the password does not confuse the split" \
+  "https://host/x" \
+  "$(url_without_userinfo 'https://u:p@ss@host/x')"
+
+# And the host derived from that base is the HOST, not the proxy username --
+# `${h%%:*}` on `apiuser:pw@127.0.0.1:9391` yields `apiuser`, which is what
+# `resolve_host` was being handed.
+doctor_test_host=$(url_without_userinfo 'https://apiuser:hunter2-proxy-password@127.0.0.1:9391/indexer')
+doctor_test_host=${doctor_test_host#*://}
+doctor_test_host=${doctor_test_host%%/*}
+check "the derived host is the host, not the userinfo user" \
+  "127.0.0.1" "${doctor_test_host%%:*}"
+
+# B5 — curl speaks neither `ws:` nor `wss:`. Rewriting only `wss:` made every
+# plain-HTTP deployment report a blocked Upgrade.
+check "wss is rewritten to https" "https://h/p" "$(ws_probe_url 'wss://h/p')"
+check "ws is rewritten to http"   "http://h/p"  "$(ws_probe_url 'ws://h/p')"
+check "a non-ws url is untouched" "https://h/p" "$(ws_probe_url 'https://h/p')"
+
 # ── report ──────────────────────────────────────────────────────────────────
 
 printf '\n%d passed, %d failed.\n' "$PASSED" "$FAILED"

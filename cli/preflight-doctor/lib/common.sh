@@ -81,6 +81,30 @@ redact() {
       -e 's/[A-Za-z0-9_-]{40,}/<redacted:token>/g'
 }
 
+# url_without_userinfo <url> -- the URL with any `user:pass@` removed.
+#
+# `redact` cannot cover this. It scrubs values that were REGISTERED plus long
+# hex/base64 runs, and a proxy password like `hunter2-proxy-password` is
+# neither -- it arrives from `NEXUS_EXCHANGE_API_URL`, which the tool never
+# sees as a secret, and it is too short and too punctuated for the catch-all.
+# So the only safe move is structural: drop the userinfo entirely rather than
+# try to recognise what is in it.
+#
+# Userinfo is delimited by the LAST `@` before the first `/` of the path, since
+# a password may itself contain `@`.
+url_without_userinfo() {
+  local url=$1 scheme rest
+  case $url in
+    *://*) scheme=${url%%://*}://; rest=${url#*://} ;;
+    *) printf '%s' "$url"; return ;;
+  esac
+  local authority=${rest%%/*} tail=${rest#"${rest%%/*}"}
+  case $authority in
+    *@*) authority=${authority##*@} ;;
+  esac
+  printf '%s%s%s' "$scheme" "$authority" "$tail"
+}
+
 # describe_secret <value> — how a credential is allowed to appear in output.
 #
 # A length and a character class, and nothing else. The temptation is to print
