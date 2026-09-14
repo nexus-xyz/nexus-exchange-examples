@@ -53,6 +53,7 @@ don't ship a client for.
 | Example | What it shows |
 | --- | --- |
 | [`trading-terminal/`](./exchange-api/trading-terminal) | A terminal trading desk for one market: HMAC request signing by hand, the `op`-envelope WebSocket protocol, exact decimal money arithmetic, and a write path that places one order and guarantees it is cancelled. Zero runtime dependencies. |
+| [`order-loader/`](./exchange-api/order-loader) | A bulk order loader: a file of orders in, `POST /orders/batch` in weight-optimal chunks out, paced against the three rate-limit budgets it reads from `GET /account/rate-limit` rather than hardcoding from the tier table. Dry-runs by default, and cancels everything it placed at exit. |
 
 ### Track 2 — one whole app per SDK
 
