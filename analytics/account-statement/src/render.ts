@@ -90,7 +90,7 @@ export function render(
   renderFees(statement, write);
   renderFunding(statement, write);
   renderActivity(statement, write);
-  renderReconciliation(reconciliation, write);
+  renderReconciliation(reconciliation, write, config.market);
   renderWireTypes(statement, write);
   renderCaveats(statement, write);
 
@@ -258,8 +258,28 @@ function renderActivity(statement: Statement, write: (line: string) => void): vo
 function renderReconciliation(
   reconciliation: Reconciliation | null,
   write: (line: string) => void,
+  marketFilter: string | null,
 ): void {
   write("Reconciliation against the venue's own curve");
+
+  // DISCLOSED, because with `--market` the two halves of this block cover a
+  // different set of markets from the lines above it. The derived side here is
+  // account-wide on purpose -- `/account/portfolio-history` has no market
+  // parameter, so an account-wide published delta can only be differenced
+  // against an account-wide derived total. Without this line a reader sees a
+  // filtered TOTAL above and an unfiltered `derived from rows` below, and the
+  // obvious reading is that one of them is wrong.
+  if (marketFilter !== null) {
+    prose(
+      write,
+      "  ",
+      `This block is ACCOUNT-WIDE, unlike the lines above, which are filtered ` +
+        `to ${marketFilter}. The venue's published curve has no market ` +
+        "parameter, so reconciling a single market's rows against it would " +
+        "book every other market's P&L into the residual.",
+    );
+    write("");
+  }
 
   if (reconciliation === null) {
     prose(

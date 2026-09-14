@@ -72,6 +72,12 @@ export interface Statement {
   readonly periodFromSeries: boolean;
   readonly markets: readonly MarketLine[];
   readonly totals: MarketLine;
+  /**
+   * The same fold WITHOUT the `--market` filter, which is the only thing that
+   * can honestly be differenced against `/account/portfolio-history` — that
+   * endpoint has no market parameter. Equal to `totals` when no filter is set.
+   */
+  readonly accountWideTotals: MarketLine;
   readonly funding: FundingDepth;
   readonly fundingSignConflicts: number;
   readonly fillsCapped: boolean;
@@ -101,8 +107,26 @@ function emptyLine(marketId: string): MarketLine {
   };
 }
 
+/**
+ * HALF-OPEN AT THE START, `(start, end]`, and that is not a style choice.
+ *
+ * The published side of the reconciliation is `last.pnl - first.pnl`, and
+ * `pnl` is CUMULATIVE. A difference of a cumulative series can only ever
+ * attribute events to a half-open interval: whatever produced `first.pnl` is
+ * already inside it and cancels. A closed-closed row filter therefore adds any
+ * row landing exactly on `periodStartMs` to the derived side a second time,
+ * and the reconciliation reports that duplicate as residual.
+ *
+ * Not a corner case: funding settles on the hour and the `day`/`week` cadences
+ * are 5 min and 1 h, so a funding row landing exactly on the first sample is
+ * routine.
+ *
+ * Distinct from the "edge effects at the two ends" caveat in `reconcile.ts`,
+ * which is about rows falling BETWEEN a sample and the boundary — genuinely
+ * unavoidable, and not this.
+ */
 function inPeriod(timestampMs: number, startMs: number, endMs: number): boolean {
-  return timestampMs >= startMs && timestampMs <= endMs;
+  return timestampMs > startMs && timestampMs <= endMs;
 }
 
 /**
@@ -180,10 +204,18 @@ export async function buildStatement(
     config.maxRows,
     HEAVY_READ_WEIGHT,
   );
-  const fills = fillsPage.rows
+  // TWO SETS, because `--market` filters the derived side and cannot filter the
+  // published one: `/account/portfolio-history` takes no market parameter, so
+  // `last.pnl - first.pnl` is always account-wide. Differencing a single
+  // market's derived total against it books every OTHER market's P&L into the
+  // residual, under prose telling the reader the residual is expected to be
+  // unrealized P&L. The `*InPeriod` arrays are what the reconciliation uses.
+  const fillsInPeriod = fillsPage.rows
     .map((row) => parseFill(watch, row))
-    .filter((fill) => inPeriod(fill.timestampMs, periodStartMs, periodEndMs))
-    .filter((fill) => config.market === null || fill.marketId === config.market);
+    .filter((fill) => inPeriod(fill.timestampMs, periodStartMs, periodEndMs));
+  const fills = fillsInPeriod.filter(
+    (fill) => config.market === null || fill.marketId === config.market,
+  );
 
   onProgress("funding (weight 1)");
   const fundingAnswer = await client.get<unknown[]>({
@@ -194,10 +226,12 @@ export async function buildStatement(
   if (!Array.isArray(fundingAnswer.body)) {
     throw new TypeError("GET /api/v1/funding: expected a JSON array");
   }
-  const fundingRows = fundingAnswer.body
+  const fundingInPeriod = fundingAnswer.body
     .map((row) => parseFunding(watch, row))
-    .filter((row) => inPeriod(row.timestampMs, periodStartMs, periodEndMs))
-    .filter((row) => config.market === null || row.marketId === config.market);
+    .filter((row) => inPeriod(row.timestampMs, periodStartMs, periodEndMs));
+  const fundingRows = fundingInPeriod.filter(
+    (row) => config.market === null || row.marketId === config.market,
+  );
 
   const fundingDepth = readFundingDepth(fundingAnswer.headers);
   describeFundingDepth(fundingDepth, periodStartMs, caveats);
@@ -210,10 +244,12 @@ export async function buildStatement(
     config.maxRows,
     1,
   );
-  const closed = closedPage.rows
+  const closedInPeriod = closedPage.rows
     .map((row) => parseClosed(watch, row))
-    .filter((row) => inPeriod(row.closedAtMs, periodStartMs, periodEndMs))
-    .filter((row) => config.market === null || row.marketId === config.market);
+    .filter((row) => inPeriod(row.closedAtMs, periodStartMs, periodEndMs));
+  const closed = closedInPeriod.filter(
+    (row) => config.market === null || row.marketId === config.market,
+  );
 
   onProgress("account/fees (weight 1)");
   let fees: FeeSchedule | null = null;
@@ -235,6 +271,12 @@ export async function buildStatement(
   const activity = await readActivity(client, config, periodStartMs, periodEndMs);
 
   const lines = fold(fills, fundingRows, closed);
+  // Identical to `lines.totals` when no `--market` is given, so the common case
+  // costs one extra fold over rows already in memory and no extra request.
+  const accountWideTotals =
+    config.market === null
+      ? lines.totals
+      : fold(fillsInPeriod, fundingInPeriod, closedInPeriod).totals;
   const fundingSignConflicts = fundingRows.filter((row) => !row.directionAgrees).length;
 
   if (fillsPage.capped) {
@@ -264,6 +306,7 @@ export async function buildStatement(
     periodFromSeries,
     markets: lines.markets,
     totals: lines.totals,
+    accountWideTotals,
     funding: fundingDepth,
     fundingSignConflicts,
     fillsCapped: fillsPage.capped,

@@ -81,7 +81,10 @@ export function reconcile(statement: Statement): Reconciliation | null {
   const last = series.points.at(-1);
   if (first === undefined || last === undefined || first === last) return null;
 
-  const totals = statement.totals;
+  // ACCOUNT-WIDE, not the `--market`-filtered totals the report displays. The
+  // published series has no market parameter, so this is the only comparison
+  // where both sides cover the same set of markets.
+  const totals = statement.accountWideTotals;
   const publishedPnlDelta = subtract(last.pnl, first.pnl);
   const derivedPnl = add(totals.realizedPnl, totals.fundingNet);
   const residual = subtract(publishedPnlDelta, derivedPnl);
