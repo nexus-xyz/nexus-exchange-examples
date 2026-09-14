@@ -325,17 +325,30 @@ async function liveRun(client: Client, config: Config): Promise<number> {
   // keep. `null` means it was already on and this app did not touch it.
   let restoreCodTo: boolean | null = null;
   let status = before;
-  if (!before.enabled) {
-    status = await client.setCancelOnDisconnect(true);
-    restoreCodTo = false;
-    log(`armed: ${describeCod(status)}`);
-  }
 
   let session: Session | null = null;
   let orderId: string | null = null;
   let outcome = EXIT_ERROR;
 
   try {
+    // ARMED INSIDE THE `try`, AND THE INTENT RECORDED BEFORE THE CALL.
+    //
+    // Assigning `restoreCodTo` after the await treated a write as applied only
+    // if we heard it succeed. But the response is not the write: a 5s client
+    // timeout, a 502 issued after the venue applied it, or a dropped
+    // connection all leave the account armed with the exception escaping and
+    // `restoreCodTo` still `null` — an account-wide `enabled = true` it never
+    // asked for, never restored, and never mentioned in the output. The
+    // README promises restore "only if this app was the one that changed it",
+    // and in that window this app is exactly that.
+    //
+    // A write that MAY have applied has to be treated as applied.
+    if (!before.enabled) {
+      restoreCodTo = false;
+      status = await client.setCancelOnDisconnect(true);
+      log(`armed: ${describeCod(status)}`);
+    }
+
     // The refusal that keeps this example honest. `enabled` is now true, but
     // `active` is `enabled && the exchange-side switch`, and that switch ships
     // off. Placing an order here would rest it on a venue that is not going to
@@ -425,7 +438,56 @@ async function liveRun(client: Client, config: Config): Promise<number> {
         log("  Cancel it yourself before leaving this account unattended.");
       }
     }
-    if (restoreCodTo !== null) {
+    // THE SWEEP, BEFORE COD IS DISARMED, because `orderId` is not the same
+    // question as "is anything resting".
+    //
+    // `orderId` is assigned in exactly one place — `await awaitResting(...)` —
+    // and every rejection path of that call leaves it `null`: the watch
+    // timeout, the session reporting `failed`, the child exiting or erroring
+    // before `resting`, and interrupt. In each, the order may already be on
+    // the book: the client is built with `timeoutMs: 5_000` and `placeOrder`
+    // is a POST, which the SDK does not retry, so a timeout on a request the
+    // engine ACCEPTED throws in the child and the parent never learns the id.
+    // The branch above then skips the cancel, and this block used to disarm
+    // COD within a few hundred ms — well inside testnet's 10s grace, so the
+    // timer that would have saved the order is switched off before it fires.
+    //
+    // `cancelAllOrders()` is safe here for one specific reason: `liveRun`
+    // refused to start on a non-empty book, so anything resting now is ours.
+    // A FLAG, NOT AN EARLY `return`. A `return` inside `finally` discards the
+    // exception that is propagating — including the `Interrupted` the caller
+    // matches on to choose its exit code and message.
+    let bookConfirmedEmpty = false;
+    try {
+      const open = await client.getOpenOrders();
+      if (open.length === 0) {
+        bookConfirmedEmpty = true;
+      } else {
+        log(`cleanup: ${open.length} order(s) still resting — cancelling before disarming`);
+        await client.cancelAllOrders();
+        const after = await client.getOpenOrders();
+        if (after.length > 0) {
+          log(`cleanup: FAILED — ${after.length} order(s) STILL resting.`);
+          log("  Cancel them yourself before leaving this account unattended.");
+        } else {
+          bookConfirmedEmpty = true;
+          log("cleanup: book is empty");
+        }
+      }
+    } catch (error) {
+      // Could not PROVE the book is empty, so do not disarm the thing that
+      // would clear it. An account left armed is the safe direction to err in;
+      // an order left resting is not.
+      log(`cleanup: could not confirm the book is empty: ${describe(error)}`);
+    }
+
+    if (restoreCodTo === null) {
+      // Nothing to restore: COD was already on and this app never changed it.
+      // Say nothing rather than imply a restore is being withheld.
+    } else if (!bookConfirmedEmpty) {
+      log("  NOT restoring cancel-on-disconnect: the book was not confirmed empty,");
+      log("  so the venue keeps its chance to cancel. Turn it off once you have checked.");
+    } else {
       try {
         const restored = await client.setCancelOnDisconnect(restoreCodTo);
         log(`restored: ${describeCod(restored)}`);
@@ -485,7 +547,19 @@ try {
     process.exit(EXIT_ERROR);
   }
   if (error instanceof Interrupted) {
-    console.error(`\n${error.message} — cleanup ran, nothing was left resting.`);
+    // "cleanup ran", not "nothing was left resting". Cleanup now sweeps the
+    // book on every path, but it can still fail to prove it is empty — the
+    // poll can error, or a cancel can be refused — and it says so in the log
+    // when that happens. This line is printed by the outer handler, which does
+    // not know which of those occurred, so it must not assert the outcome.
+    //
+    // Interrupt is the path where this matters most: Ctrl-C reaches the child
+    // too (`spawn` passes no `detached`, so it shares the process group), so it
+    // can land between `placeOrder` and the parent learning the order id.
+    console.error(
+      `\n${error.message} — cleanup ran. Check the lines above: they say ` +
+        "whether the book was confirmed empty.",
+    );
     process.exit(EXIT_INTERRUPTED);
   }
   if (isVenueError(error)) {
