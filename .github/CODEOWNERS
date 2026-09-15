@@ -1,6 +1,13 @@
-# Default reviewers — the Interfaces pod. Any member of @nexus-xyz/eng can
-# review and unblock, so no single person is a bottleneck; @Luc-Campos (SDK
-# lead) and @collinjackson are listed explicitly so both are auto-requested on
-# every PR. Matches the sibling nexus-exchange-* client repos.
+# Default reviewers: the @nexus-xyz/eng team. Any member can review and unblock --
+# no single-person bottleneck.
+#
+# Deliberately a team rather than named individuals: membership changes in org
+# settings, so joiners and leavers need no PR here. This file previously named a
+# since-departed SDK lead (ENG-14958). GitHub silently omits a non-member from a
+# review request, so such a line looks like coverage while providing none -- it
+# never fails, it just quietly means nothing.
+#
+# This repo was missed by ENG-14958's first pass, which changed the five client
+# repos (ts, py, rs, mcp, cli) and not this one.
 # Docs: https://docs.github.com/articles/about-code-owners
-* @nexus-xyz/eng @Luc-Campos @collinjackson
+* @nexus-xyz/eng

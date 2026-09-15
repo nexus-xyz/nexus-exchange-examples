@@ -1,7 +1,11 @@
 // HMAC-SHA256 request signing, by hand.
 //
-// This is the whole of the Exchange's authentication scheme, and writing it out
-// is half the point of a no-SDK example. Three headers, one canonical string:
+// Copied from `trading-terminal` rather than imported (CONTRIBUTING.md § 1),
+// with trap 2 updated for the deployment this example targets. Keeping the two
+// consistent is deliberate: it is the same lesson, and a reader who has seen
+// one should recognise the other.
+//
+// Three headers, one canonical string:
 //
 //     <timestamp_ms>\n<METHOD>\n<path>\n<query>\n<sha256hex(body)>
 //
@@ -17,13 +21,12 @@
 //     verifies against nothing.
 //
 //  2. **`<path>` is the path the *indexer* verifies, not the path in your
-//     URL.** The deployment mounts the API under a path prefix and strips it
-//     before the request reaches the service that checks the signature, so a
-//     request sent to
-//     `https://api.testnet.nexus.xyz/indexer/api/v1/orders` is verified as
-//     `/api/v1/orders`. Sign what the indexer sees. `rest.ts` keeps the two
-//     halves — the signed path and the sent URL — derived from one value each,
-//     so they cannot drift apart.
+//     URL.** The testnet deployment mounts the service under a `/indexer` route
+//     prefix and strips it before the request reaches the code that checks the
+//     signature, so a request sent to
+//     `https://api.testnet.nexus.xyz/indexer/api/v1/orders/batch` is verified as
+//     `/api/v1/orders/batch`. Sign what the indexer sees. `rest.ts` derives the
+//     signed path and the sent URL from one value each, so they cannot drift.
 //
 //  3. **`<query>` must be the exact bytes on the wire.** Percent-encoding is
 //     not canonicalised anywhere: if you build the query string once for the
@@ -41,9 +44,9 @@ export function sha256Hex(body: Uint8Array): string {
 /**
  * Decode a hex secret to the bytes that key the HMAC.
  *
- * Rejects malformed input instead of truncating at the first bad character —
- * a mis-decoded secret signs perfectly well and fails only at the server, with
- * a `401` that says nothing about why. The error deliberately does not echo the
+ * Rejects malformed input instead of truncating at the first bad character — a
+ * mis-decoded secret signs perfectly well and fails only at the server, with a
+ * `401` that says nothing about why. The error deliberately does not echo the
  * value: it is the credential.
  */
 export function decodeSecret(secretHex: string): Buffer {
@@ -65,14 +68,12 @@ export interface SignedHeaders {
 /**
  * Build the three authentication headers for one request.
  *
- * `path` is the indexer-visible path (see trap 2 above), `query` the exact
- * encoded query string with no leading `?`, and `body` the exact bytes being
- * sent — for a bodyless request, an empty buffer, which still hashes.
- *
  * `timestampMs` must be within **30 seconds** of the server's clock or the
- * signature is refused as a replay. That window is the reason `rest.ts` reads
- * the server's `Date` header and reports skew: a machine with a drifting clock
- * fails every signed call with a `401` that looks exactly like a bad secret.
+ * signature is refused as a replay. That window is why `rest.ts` reads the
+ * server's `Date` header and reports skew: a machine with a drifting clock
+ * fails every signed call with a `401` that looks exactly like a bad secret —
+ * and in a bulk loader it fails every call in the run, which reads like a
+ * revoked key rather than a wrong clock.
  */
 export function signRequest(
   apiKey: string,

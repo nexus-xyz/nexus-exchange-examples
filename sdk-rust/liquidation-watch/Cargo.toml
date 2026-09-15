@@ -1,0 +1,21 @@
+[package]
+name = "liquidation-watch"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Distance-to-liquidation and margin health for one Nexus Exchange account, next to the venue's own ADL record."
+
+[dependencies]
+# Pinned exactly, not by range: a reader running this a year from now should get
+# the behaviour the README describes. See CONTRIBUTING § 3.
+nexus-exchange = "=0.11.0"
+# Held at the version the SDK's own lockfile resolves, so the `Decimal` this app
+# does arithmetic on is the same type the SDK deserializes into. A `^1` range
+# would unify anyway; the exact pin is what makes that visible.
+rust_decimal = "=1.42.1"
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+# Tests only, to decode a verbatim wire capture through the SDK's own types —
+# the check that the wire still sends money as decimal strings.
+serde_json = "=1.0.151"
