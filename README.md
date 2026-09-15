@@ -81,6 +81,7 @@ and analysis rather than order placement.
 | Example | What it shows |
 | --- | --- |
 | [`market-report/`](./analytics/market-report) | A venue-wide market report — candles, funding, volume and the venue's own event stats — written to a terminal table, a CSV and a self-contained HTML page. No credentials, no dependencies, and mostly about the data validation an analytics tool needs before it computes anything. |
+| [`account-statement/`](./analytics/account-statement) | A period P&L, fee and funding statement for one account: realized P&L by market, maker/taker fees, funding by direction — then reconciled against the venue's own equity curve, with the residual reported rather than hidden. Lossless decimal money throughout. Zero runtime dependencies. |
 | [`funding-carry/`](./analytics/funding-carry) | Ranks markets by funding carry and how stable that carry has been, against the margin it ties up. Derives the settlement interval instead of assuming 8h, states its annualisation convention, and refuses to rank a market on too few samples. No credentials, zero runtime dependencies. |
 
 ### Track 5 — builder codes
