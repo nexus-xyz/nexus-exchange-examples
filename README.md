@@ -53,13 +53,14 @@ don't ship a client for.
 | Example | What it shows |
 | --- | --- |
 | [`trading-terminal/`](./exchange-api/trading-terminal) | A terminal trading desk for one market: HMAC request signing by hand, the `op`-envelope WebSocket protocol, exact decimal money arithmetic, and a write path that places one order and guarantees it is cancelled. Zero runtime dependencies. |
+| [`order-loader/`](./exchange-api/order-loader) | A bulk order loader: a file of orders in, `POST /orders/batch` in weight-optimal chunks out, paced against the three rate-limit budgets it reads from `GET /account/rate-limit` rather than hardcoding from the tier table. Dry-runs by default, and cancels everything it placed at exit. |
 
 ### Track 2 — one whole app per SDK
 
 | SDK | Directory | Examples |
 | --- | --- | --- |
-| Rust | [`sdk-rust/`](./sdk-rust) | [`risk-guard/`](./sdk-rust/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
-| TypeScript | [`sdk-ts/`](./sdk-ts) | [`risk-guard/`](./sdk-ts/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
+| Rust | [`sdk-rust/`](./sdk-rust) | [`risk-guard/`](./sdk-rust/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached · [`liquidation-watch/`](./sdk-rust/liquidation-watch) — how far each mark can move before maintenance margin breaks, ranked by fragility, next to the venue's own ADL record |
+| TypeScript | [`sdk-ts/`](./sdk-ts) | [`risk-guard/`](./sdk-ts/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached · [`dead-mans-switch/`](./sdk-ts/dead-mans-switch) — arms cancel-on-disconnect, then SIGKILLs its own trading session so you can watch the venue cancel for you |
 | Python | [`sdk-python/`](./sdk-python) | [`risk-guard/`](./sdk-python/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
 | MCP | [`sdk-mcp/`](./sdk-mcp) | [`risk-review/`](./sdk-mcp/risk-review) — reviews one account over the MCP tool surface, with an explicit read-only allowlist |
 
@@ -71,6 +72,7 @@ Apps built by scripting [`nexus-exchange-cli`](https://github.com/nexus-xyz/nexu
 | --- | --- |
 | [`quote-ladder/`](./cli/quote-ladder) | A ladder of resting post-only orders, kept on one market by a script you can put in a crontab: a reconciler over the CLI, idempotent through derived client order ids, with exact decimal money arithmetic in bash and a single-writer lock. |
 | [`preflight-doctor/`](./cli/preflight-doctor) | Why you cannot reach the venue, one check at a time: DNS, the base URL's path prefix, the WebSocket base, clock skew, and only then credentials. Separates a wrong prefix (404) from a reachable venue refusing you (401) from a venue that is simply down (503). Read-only, and its output is safe to paste into a bug report. |
+| [`stream-monitor/`](./cli/stream-monitor) | Follows your account's channels over the WebSocket and survives a disconnect: a durable per-channel cursor, a resume that is checked for holes rather than assumed, and the `out_of_sync` path that a monitor which simply reconnects gets wrong. |
 
 ### Track 4 — [`analytics/`](./analytics) · market-data and history tools
 
@@ -80,6 +82,8 @@ and analysis rather than order placement.
 | Example | What it shows |
 | --- | --- |
 | [`market-report/`](./analytics/market-report) | A venue-wide market report — candles, funding, volume and the venue's own event stats — written to a terminal table, a CSV and a self-contained HTML page. No credentials, no dependencies, and mostly about the data validation an analytics tool needs before it computes anything. |
+| [`account-statement/`](./analytics/account-statement) | A period P&L, fee and funding statement for one account: realized P&L by market, maker/taker fees, funding by direction — then reconciled against the venue's own equity curve, with the residual reported rather than hidden. Lossless decimal money throughout. Zero runtime dependencies. |
+| [`funding-carry/`](./analytics/funding-carry) | Ranks markets by funding carry and how stable that carry has been, against the margin it ties up. Derives the settlement interval instead of assuming 8h, states its annualisation convention, and refuses to rank a market on too few samples. No credentials, zero runtime dependencies. |
 
 ### Track 5 — builder codes
 

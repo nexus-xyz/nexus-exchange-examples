@@ -38,10 +38,14 @@ export interface Config {
  * Anything else is `unknown` until the operator declares otherwise — see
  * `resolveFunds`.
  */
-const KNOWN_PLAY_HOST = "exchange.nexus.xyz";
+const KNOWN_PLAY_HOST = "api.testnet.nexus.xyz";
 
-/** Default gateway base. Verified live: see the README's "About the host". */
-const DEFAULT_BASE_URL = "https://exchange.nexus.xyz/api/exchange";
+/**
+ * Default deployment base — testnet's durable host, including the `/indexer`
+ * path prefix the API is mounted under. Verified live: see the README's
+ * "About the host". The prefix is load-bearing; the bare host `404`s.
+ */
+const DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/indexer";
 
 const DEFAULT_MARKET = "BTC-USDX-PERP";
 const DEFAULT_ORDER_DISTANCE_BPS = 200;

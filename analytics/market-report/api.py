@@ -25,10 +25,12 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping
 
-# The deployment's gateway base. The `/api/v1` surface is mounted *under* this
-# prefix rather than at the host root — see the README's "About the host", where
-# the 404 that teaches you this is written out.
-DEFAULT_BASE_URL = "https://exchange.nexus.xyz/api/exchange"
+# Testnet's durable base. The `/api/v1` surface is mounted *under* the
+# `/indexer` prefix rather than at the host root — see the README's "About the
+# host", where the 404 that teaches you this is written out. The prefix is
+# load-bearing; the bare host 404s. (The older `exchange.nexus.xyz/api/exchange`
+# base is decommissioned and answers 500 on every route.)
+DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/indexer"
 
 # Sent on every request for traffic attribution, the same way the CLI does. Not
 # a version negotiation: see `API_VERSION`.
