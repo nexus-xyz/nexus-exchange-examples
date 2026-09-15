@@ -30,6 +30,7 @@ import {
   parseFunding,
   parsePortfolio,
   type PortfolioSeries,
+  readTimestamp,
   TypeWatch,
 } from "./wire.js";
 
@@ -275,7 +276,24 @@ export async function buildStatement(
   }
 
   onProgress(`orders/history (weight ${HEAVY_READ_WEIGHT} per page)`);
-  const activity = await readActivity(client, config, periodStartMs, periodEndMs);
+  const activity = await readActivity(client, config, watch, periodStartMs, periodEndMs);
+
+  // NAMED, because a zone-less stamp is the one wire divergence that moves a
+  // number without moving a type. `Date.parse` reads a zone-less date-TIME as
+  // the operator's LOCAL time, so rows near the period edges would move by
+  // whoever ran the tool, changing the derived side of the reconciliation
+  // while the published side — which comes from the series — stayed put. They
+  // are read as UTC instead; this says so, because a residual that depends on
+  // a machine's timezone should never be silent.
+  const zoneless = watch.zonelessTimestamps();
+  if (zoneless.length > 0) {
+    caveats.push(
+      `${zoneless.join(", ")} arrived without a UTC offset and were read as ` +
+        "UTC. If the venue meant a different zone, every row near a period " +
+        "boundary may be on the wrong side of it, and the residual below " +
+        "moves with it.",
+    );
+  }
 
   const lines = fold(fills, fundingRows, closed);
   // Identical to `lines.totals` when no `--market` is given, so the common case
@@ -396,6 +414,7 @@ function describeFundingDepth(
 async function readActivity(
   client: RestClient,
   config: Config,
+  watch: TypeWatch,
   periodStartMs: number,
   periodEndMs: number,
 ): Promise<ActivitySummary | null> {
@@ -417,12 +436,21 @@ async function readActivity(
     // (@nvizble, #22). That inflates the terminal-order count with orders from
     // outside the window — quietly, since the count carries no caveat saying
     // some of it is unplaced. A row we cannot place is a row we cannot claim.
-    const at = record["completed_at_ms"] ?? record["created_at_ms"];
-    if (typeof at !== "number" || !Number.isFinite(at)) {
+    //
+    // THROUGH `readTimestamp`, like every other timestamp in this app. This
+    // branch used to hand-roll `typeof at === "number"`, so on the very venue
+    // `readTimestamp` was taught to handle — the one sending ISO-8601 strings
+    // — every order row became unplaceable, `total` went to 0, and the line
+    // below asserted the fields were ABSENT when they were present as strings.
+    // Two halves of the same app disagreeing about what a timestamp is.
+    const at =
+      readTimestamp(watch, record, "completed_at_ms", "Order.completed_at_ms") ??
+      readTimestamp(watch, record, "created_at_ms", "Order.created_at_ms");
+    if (at === null) {
       unplaceable += 1;
       continue;
     }
-    if (!inPeriod(Math.trunc(at), periodStartMs, periodEndMs)) continue;
+    if (!inPeriod(at, periodStartMs, periodEndMs)) continue;
     const marketId = record["market_id"];
     if (config.market !== null && marketId !== config.market) continue;
     const status = typeof record["status"] === "string" ? record["status"] : "unknown";

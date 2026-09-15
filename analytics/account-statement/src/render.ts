@@ -257,10 +257,14 @@ function renderActivity(statement: Statement, write: (line: string) => void): vo
     // loud rather than left as a silent subtraction: a row with no timestamp
     // may well belong to this period, so the count is a floor for a second,
     // different reason than the row cap.
+    // "could not be placed", NOT "carried neither field". The old wording
+    // asserted the fields were absent, which the reader cannot check and which
+    // was wrong whenever they were present but unreadable — the ISO-string
+    // venue made that the common case rather than the rare one.
     write(
-      `  (${activity.unplaceable} order(s) carried neither completed_at_ms nor ` +
-        "created_at_ms and could not be placed in the period; they are not " +
-        "counted above and may belong to it)",
+      `  (${activity.unplaceable} order(s) carried no readable ` +
+        "completed_at_ms or created_at_ms and could not be placed in the " +
+        "period; they are not counted above and may belong to it)",
     );
   }
   write("");

@@ -31,19 +31,73 @@ function asString(record: Record<string, unknown>, key: string): string {
   return value;
 }
 
-function asTimestamp(record: Record<string, unknown>, key: string): number {
+/** An explicit `Z` or `±HH:MM` / `±HHMM` suffix. */
+const HAS_ZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+/** `YYYY-MM-DD` with no time part, which ECMAScript already reads as UTC. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+/** A whole number of milliseconds that arrived quoted. */
+const EPOCH_DIGITS = /^[+-]?\d+$/;
+
+/**
+ * Read a wire timestamp, whatever shape it arrived in, **in UTC**.
+ *
+ * Returns `null` rather than throwing, so a caller that would rather drop one
+ * row than lose the run can. `asTimestamp` is the throwing wrapper.
+ *
+ * THE ZONE IS THE WHOLE PROBLEM. `Date.parse` is specified to read a zone-less
+ * date-TIME as the *operator's local time* (`2026-09-15T10:00:00` is 13:00Z on
+ * a UTC-3 machine) while reading a date-ONLY string as UTC. Timestamps select
+ * which rows fall inside the half-open period, and therefore what lands in the
+ * derived side of the reconciliation — while the published side comes from the
+ * portfolio series and does not move. So on a venue sending zone-less strings
+ * the residual shifted by whoever happened to run the tool, with nothing in
+ * the output naming the cause.
+ *
+ * A zone-less stamp is therefore read as UTC deliberately rather than by
+ * accident, and the field is recorded so the run can say it did so.
+ */
+export function readTimestamp(
+  watch: TypeWatch,
+  record: Record<string, unknown>,
+  key: string,
+  field: string,
+): number | null {
   const value = record[key];
   if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
   // An ISO-8601 string where the contract promised a number. Hard-requiring
   // the number killed EVERY row on a venue that sent strings (@nvizble, #22) —
   // the same ENG-8439 divergence this app already tolerates for money, refused
-  // here for no reason beyond which helper the field went through. Accepted,
-  // and only when it parses to a finite instant.
-  if (typeof value === "string") {
-    const parsed = Date.parse(value);
-    if (Number.isFinite(parsed)) return parsed;
+  // here for no reason beyond which helper the field went through.
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (text === "") return null;
+
+  // Milliseconds that merely arrived quoted. `Date.parse` rejects these
+  // outright, which is the same refusal-by-container ENG-8439 is about.
+  if (EPOCH_DIGITS.test(text)) {
+    const ms = Number(text);
+    return Number.isFinite(ms) ? Math.trunc(ms) : null;
   }
-  throw new TypeError(`${key}: expected a millisecond timestamp`);
+
+  const zoned = HAS_ZONE.test(text) || DATE_ONLY.test(text);
+  // `T` separator supplied when the venue used a space, since `Date.parse` is
+  // only specified for the ISO form and the space form is implementation-defined.
+  const normalised = zoned ? text : `${text.replace(" ", "T")}Z`;
+  const parsed = Date.parse(normalised);
+  if (!Number.isFinite(parsed)) return null;
+  if (!zoned) watch.observeZonelessTimestamp(field);
+  return parsed;
+}
+
+function asTimestamp(
+  watch: TypeWatch,
+  record: Record<string, unknown>,
+  key: string,
+  field: string,
+): number {
+  const ms = readTimestamp(watch, record, key, field);
+  if (ms === null) throw new TypeError(`${key}: expected a millisecond timestamp`);
+  return ms;
 }
 
 /** A field whose wire type is being watched. Reported when it disagrees. */
@@ -62,6 +116,22 @@ export interface TypeObservation {
  */
 export class TypeWatch {
   private readonly seen = new Map<string, Set<Fidelity>>();
+  private readonly zoneless = new Set<string>();
+
+  /**
+   * A timestamp field that arrived without a `Z` or offset, and was therefore
+   * read as UTC by decision rather than by `Date.parse`'s local-time default.
+   * Surfaced as a caveat: it is the difference between a residual that is the
+   * same for everyone and one that depends on who ran the tool.
+   */
+  observeZonelessTimestamp(field: string): void {
+    this.zoneless.add(field);
+  }
+
+  /** Timestamp fields that arrived without an explicit zone. */
+  zonelessTimestamps(): readonly string[] {
+    return [...this.zoneless].sort((a, b) => a.localeCompare(b));
+  }
 
   observe(field: string, fidelity: Fidelity): void {
     const set = this.seen.get(field) ?? new Set<Fidelity>();
@@ -169,7 +239,7 @@ export function parseFill(watch: TypeWatch, raw: unknown): Fill {
       ? null
       : money(watch, record, "fee", "Fill.fee"),
     role,
-    timestampMs: asTimestamp(record, "timestamp"),
+    timestampMs: asTimestamp(watch, record, "timestamp", "Fill.timestamp"),
     isLiquidation: record["is_liquidation"] === true,
   };
 }
@@ -217,7 +287,7 @@ export function parseFunding(watch: TypeWatch, raw: unknown): FundingRow {
     directionAgrees: agrees,
     fundingRate: optionalMoney(watch, record, "funding_rate", "AccountFunding.funding_rate"),
     positionSize: optionalMoney(watch, record, "position_size", "AccountFunding.position_size"),
-    timestampMs: asTimestamp(record, "timestamp"),
+    timestampMs: asTimestamp(watch, record, "timestamp", "AccountFunding.timestamp"),
   };
 }
 
@@ -257,7 +327,7 @@ export function parseClosed(watch: TypeWatch, raw: unknown): ClosedPosition {
     entryPrice: optionalMoney(watch, record, "entry_price", "ClosedPosition.entry_price"),
     exitPrice: optionalMoney(watch, record, "exit_price", "ClosedPosition.exit_price"),
     realizedPnl: money(watch, record, "realized_pnl", "ClosedPosition.realized_pnl"),
-    closedAtMs: asTimestamp(record, "closed_at_ms"),
+    closedAtMs: asTimestamp(watch, record, "closed_at_ms", "ClosedPosition.closed_at_ms"),
   };
 }
 
@@ -297,7 +367,7 @@ export function parsePortfolio(
     points: rawPoints.map((point): PortfolioPoint => {
       const entry = asRecord(point);
       return {
-        timestampMs: asTimestamp(entry, "timestamp_ms"),
+        timestampMs: asTimestamp(watch, entry, "timestamp_ms", "PortfolioPoint.timestamp_ms"),
         equity: money(watch, entry, "equity", "PortfolioPoint.equity"),
         pnl: money(watch, entry, "pnl", "PortfolioPoint.pnl"),
         volume: money(watch, entry, "volume", "PortfolioPoint.volume"),
