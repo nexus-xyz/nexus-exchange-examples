@@ -28,6 +28,13 @@
 LOCK_DIR=""
 LOCK_HELD=0
 
+# How old a pid-less lock directory must be before it is treated as orphaned
+# rather than as a run still between `mkdir` and `_lock_claim`. That window is
+# microseconds wide; a minute is four orders of magnitude of headroom, so this
+# never races a healthy start and still clears a wedged store without a manual
+# `rmdir`. `--unlock` is the deliberate path; this is the automatic one.
+LOCK_ORPHAN_SECONDS=${LOCK_ORPHAN_SECONDS:-60}
+
 # Is `$1` a live process?
 #
 # Errs towards "alive" on anything ambiguous. Stealing the cursor store from a
@@ -79,20 +86,45 @@ lock_acquire() {
   age=$(_lock_file_age "$LOCK_DIR/pid")
 
   if [[ -z $pid ]]; then
-    die "$EX_BUSY" "another monitor holds $LOCK_DIR (no pid recorded yet). The cursor store was not touched; try again."
-  fi
-
-  if _lock_pid_alive "$pid"; then
+    # A pid-less lock is normally a run that started microseconds ago, between
+    # `mkdir` and `_lock_claim`'s `printf`, and refusing is right. But it is
+    # ALSO the wedged state a crash in that same window leaves behind, and
+    # before `lock_release` was made atomic it was the state a failed `rmdir`
+    # left too — and that one never clears on its own (@nvizble, #23).
+    #
+    # The two are told apart by age: a directory older than the claim window by
+    # orders of magnitude cannot be a run still inside it. The age is taken
+    # from the DIRECTORY here, since the pid file is the thing that is missing,
+    # and an unmeasurable age refuses — keeping the uncertain case on the safe
+    # side, the way `_lock_pid_alive` does.
+    local dir_age
+    dir_age=$(_lock_file_age "$LOCK_DIR")
+    if [[ $dir_age =~ ^[0-9]+$ ]] && (( dir_age >= LOCK_ORPHAN_SECONDS )); then
+      warn "clearing an orphaned lock at $LOCK_DIR: no pid was ever recorded and it is ${dir_age}s old"
+    else
+      die "$EX_BUSY" "another monitor holds $LOCK_DIR (no pid recorded yet). The cursor store was not touched; try again, or ./run.sh --unlock if it persists."
+    fi
+  elif _lock_pid_alive "$pid"; then
     die "$EX_BUSY" "another monitor holds $LOCK_DIR (pid $pid, ${age:-unknown} seconds old). The cursor store was not touched; try again."
+  else
+    warn "clearing a stale lock at $LOCK_DIR: pid $pid is gone (${age:-unknown} seconds old)"
   fi
-
-  warn "clearing a stale lock at $LOCK_DIR: pid $pid is gone (${age:-unknown} seconds old)"
 
   # Clearing it has its own race — two runs can both see the same dead pid — so
   # the removal is done by renaming the directory aside. Exactly one `mv` can
-  # succeed, which picks a single winner; the loser's `mv` fails, its `mkdir`
-  # below fails too, and it refuses. Deleting in place instead would let the
-  # loser delete the *winner's* freshly created lock.
+  # succeed, which picks a single winner.
+  #
+  # What happens to the LOSER is not what this comment used to claim. It said
+  # "the loser's `mv` fails, its `mkdir` below fails too, and it refuses" —
+  # wrong, and @nvizble caught it on #23: the winner moves the directory aside
+  # and only recreates it after `rm -rf`, so the loser's `mkdir` lands in that
+  # window and SUCCEEDS, and it is the winner's later `mkdir` that fails and
+  # refuses. Exactly one holder either way, so the outcome was never unsafe —
+  # but a reader auditing this lock against the stated reasoning was auditing
+  # against something false, which is worse than no comment.
+  #
+  # Deleting in place instead would let the loser delete the winner's freshly
+  # created lock, which is the thing the rename actually prevents.
   local aside="$LOCK_DIR.stale.$$"
   if mv -- "$LOCK_DIR" "$aside" 2>/dev/null; then
     rm -rf -- "$aside"
@@ -123,8 +155,48 @@ lock_release() {
   local owner=""
   [[ -r "$LOCK_DIR/pid" ]] && read -r owner <"$LOCK_DIR/pid" 2>/dev/null
   if [[ $owner == "$$" ]]; then
-    rm -f -- "$LOCK_DIR/pid"
-    rmdir -- "$LOCK_DIR" 2>/dev/null || true
+    # Rename aside, then delete — never `rm -f pid` followed by `rmdir`.
+    #
+    # The old order had no recovery from a partial failure: if `rmdir` failed
+    # for any reason (a stray file, an NFS sillyname), the pid file was already
+    # gone and the directory remained, so every later `lock_acquire` took the
+    # "no pid recorded yet" branch and died EX_BUSY forever, with no way out
+    # the error message mentioned (@nvizble, #23).
+    #
+    # `mv` is atomic on one filesystem, so an observer sees the lock either
+    # intact or absent — never the pid-less state that had no exit. If the `mv`
+    # fails the lock is left whole, which is the recoverable direction.
+    local aside="$LOCK_DIR.released.$$"
+    if mv -- "$LOCK_DIR" "$aside" 2>/dev/null; then
+      rm -rf -- "$aside"
+    fi
   fi
   LOCK_HELD=0
+}
+
+# lock_break <dir> — clear a lock left behind by a crashed run. `--unlock`.
+#
+# Deliberately NOT a force: it refuses while the recorded pid is alive, because
+# the failure this exists to fix is a lock with no live owner, and taking one
+# from a running monitor is the mistake `_lock_pid_alive` is written to avoid.
+# A lock directory with no pid file at all is exactly the wedged state above,
+# so that one clears.
+lock_break() {
+  local dir=$1 pid="" age
+  if [[ ! -d $dir ]]; then
+    info "no lock at $dir; nothing to clear"
+    return 0
+  fi
+  [[ -r "$dir/pid" ]] && read -r pid <"$dir/pid" 2>/dev/null
+  age=$(_lock_file_age "$dir/pid")
+  if [[ -n $pid ]] && _lock_pid_alive "$pid"; then
+    die "$EX_BUSY" "refusing to clear $dir: pid $pid is alive (${age:-unknown} seconds old). Stop that monitor first."
+  fi
+  local aside="$dir.broken.$$"
+  if mv -- "$dir" "$aside" 2>/dev/null; then
+    rm -rf -- "$aside"
+    info "cleared the lock at $dir (recorded pid ${pid:-none}, ${age:-unknown} seconds old)"
+  else
+    die "$EX_CONFIG" "could not clear $dir; remove it by hand"
+  fi
 }

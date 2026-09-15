@@ -630,6 +630,111 @@ test_a_clean_run_is_not_judged_by_the_previous_one() {
 # Finding 3. `cleanup` restored TERM to its default disposition and then
 # signalled its own process group, so the shell died before `lock_release`.
 # Only reachable with job control, which is why 72 tests never saw it.
+test_reset_takes_the_lock() {
+  start "--reset refuses while another monitor holds the lock"
+  # Seed a cursor first, with nothing holding the lock.
+  export MONITOR_MAX_ATTEMPTS=1
+  script_for fills 1
+  ws "$(ack fills 100)" "$(event fills 101)"
+  run_app --follow
+  expect_cursor fills 101
+
+  # Now a live holder: this shell. `--reset` is `rm -rf` on the cursor store,
+  # and a running monitor's next reattach would find no cursor and attach at
+  # the LIVE EDGE -- a silent gap in the one tool that exists to not have those.
+  mkdir -p -- "$MONITOR_STATE_DIR/lock"
+  printf '%s\n' "$$" >"$MONITOR_STATE_DIR/lock/pid"
+
+  run_app --reset
+  expect_status 75
+  expect_cursor fills 101
+  rm -rf -- "$MONITOR_STATE_DIR/lock"
+  finish
+}
+
+test_a_pidless_lock_does_not_wedge_forever() {
+  start "an orphaned lock clears instead of refusing forever"
+  # The state a crash between `mkdir` and the pid `printf` leaves -- and, before
+  # `lock_release` was made atomic, the state a failed `rmdir` left too. It
+  # never cleared on its own, so every later run exited 75 indefinitely.
+  mkdir -p -- "$MONITOR_STATE_DIR/lock"
+  # Backdate it past LOCK_ORPHAN_SECONDS. A fresh pid-less lock must still
+  # refuse -- that one is a run microseconds into its own start.
+  touch -t 202001010000 -- "$MONITOR_STATE_DIR/lock"
+  export MONITOR_MAX_ATTEMPTS=1
+  script_for fills 1
+  ws "$(ack fills 100)" "$(event fills 101)"
+
+  run_app --follow
+  expect_status 0
+  expect_says "clearing an orphaned lock"
+  expect_no_lock
+  finish
+}
+
+test_a_fresh_pidless_lock_still_refuses() {
+  start "a pid-less lock younger than the orphan window still refuses"
+  # The other half of the test above: this is a run that has just done `mkdir`
+  # and has not reached its `printf` yet, and taking its lock would put two
+  # monitors on one cursor store.
+  mkdir -p -- "$MONITOR_STATE_DIR/lock"
+  export MONITOR_MAX_ATTEMPTS=1
+  script_for fills 1
+  ws "$(ack fills 100)"
+
+  run_app --follow
+  expect_status 75
+  expect_says "--unlock"
+  rm -rf -- "$MONITOR_STATE_DIR/lock"
+  finish
+}
+
+test_unlock_clears_a_dead_lock_but_not_a_live_one() {
+  start "--unlock clears a dead lock and refuses a live one"
+  mkdir -p -- "$MONITOR_STATE_DIR/lock"
+  printf '%s\n' "$$" >"$MONITOR_STATE_DIR/lock/pid"
+  run_app --unlock
+  expect_status 75
+  if [[ -e "$MONITOR_STATE_DIR/lock" ]]; then
+    pass "$CURRENT: a live lock survives --unlock"
+  else
+    fail "$CURRENT: a live lock survives --unlock" "it was cleared"
+  fi
+
+  # A pid that cannot be alive: PID 0 is never a user process.
+  printf '%s\n' "2147483647" >"$MONITOR_STATE_DIR/lock/pid"
+  run_app --unlock
+  expect_status 0
+  expect_no_lock
+  finish
+}
+
+test_out_of_sync_does_not_erase_the_attach_evidence() {
+  start "a run interrupted after out_of_sync still reports its verdict"
+  # `out_of_sync` deletes the cursor deliberately -- a fresh resubscribe is the
+  # spec's own remedy. When the cursor WAS the attach evidence, a run ending in
+  # that window reported "no channel ever acknowledged a subscription" and
+  # exited EX_STREAM, throwing away the verdict and any LOSSY finding in it.
+  export MONITOR_MAX_ATTEMPTS=1
+  script_for fills 1
+  ws "$(ack fills 100)" "$(event fills 101)" \
+     "$(oos fills 5000)"
+
+  run_app --follow
+  if [[ -e "$MONITOR_STATE_DIR/cursor/fills" ]]; then
+    fail "$CURRENT: out_of_sync cleared the cursor" "the cursor file is still there"
+  else
+    pass "$CURRENT: out_of_sync cleared the cursor"
+  fi
+  if [[ $OUT == *"no channel ever acknowledged a subscription"* ||
+        $ERR == *"no channel ever acknowledged a subscription"* ]]; then
+    fail "$CURRENT: the run is not reported as never attached" "it claims nothing attached"
+  else
+    pass "$CURRENT: the run is not reported as never attached"
+  fi
+  finish
+}
+
 test_interactive_run_exits_clean_and_releases_the_lock() {
   start "an interactive run exits clean and releases the lock"
   script_for fills 1
@@ -670,7 +775,12 @@ for t in \
   test_dotenv_is_parsed_not_sourced \
   test_epoch_collision_is_not_a_duplicate \
   test_a_clean_run_is_not_judged_by_the_previous_one \
-  test_interactive_run_exits_clean_and_releases_the_lock
+  test_interactive_run_exits_clean_and_releases_the_lock \
+  test_reset_takes_the_lock \
+  test_a_pidless_lock_does_not_wedge_forever \
+  test_a_fresh_pidless_lock_still_refuses \
+  test_unlock_clears_a_dead_lock_but_not_a_live_one \
+  test_out_of_sync_does_not_erase_the_attach_evidence
 do
   printf '\n%s\n' "$t"
   "$t"

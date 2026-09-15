@@ -22,6 +22,7 @@
 #                            lost nothing
 #   ./run.sh --status        print the cursor store and exit
 #   ./run.sh --reset         forget every cursor
+#   ./run.sh --unlock        clear a lock a crashed run left behind
 #
 # Read-only. It places nothing, cancels nothing, and moves nothing. Testnet,
 # play funds. See README.md.
@@ -69,7 +70,7 @@ usage() {
   cat <<'USAGE'
 stream-monitor — a resumable account monitor over the nexus CLI's WebSocket.
 
-usage: ./run.sh [--follow | --prove-resume | --status | --reset] [--help]
+usage: ./run.sh [--follow | --prove-resume | --status | --reset | --unlock] [--help]
 
   --follow        follow the account channels, resuming each one from its
                   stored cursor. Reconnects for as long as you leave it
@@ -80,7 +81,11 @@ usage: ./run.sh [--follow | --prove-resume | --status | --reset] [--help]
                   hole in them.
   --status        print the cursor store and exit. Touches no network.
   --reset         forget every stored cursor. The next run starts from the
-                  live edge.
+                  live edge. Takes the lock first — a reset under a running
+                  monitor would send its next reattach to the live edge.
+  --unlock        remove a lock left behind by a crashed run, after checking
+                  that its recorded pid is not alive. The escape hatch for an
+                  EX_BUSY that will not clear on its own.
   --help          this text.
 
 Configuration is environment-only; see .env.example and README.md.
@@ -94,6 +99,7 @@ parse_args() {
       --prove-resume) MODE=prove; PROVE_RESUME=1 ;;
       --status) MODE=status ;;
       --reset) MODE=reset ;;
+      --unlock) MODE=unlock ;;
       -h|--help) usage; exit "$EX_OK" ;;
       *) usage >&2; die "$EX_USAGE" "unknown argument $(quoted "$1")" ;;
     esac
@@ -283,7 +289,21 @@ main() {
     report_cursors
     exit "$EX_OK"
   fi
+  if [[ $MODE == unlock ]]; then
+    lock_break "$MONITOR_STATE_DIR/lock"
+    exit "$EX_OK"
+  fi
   if [[ $MODE == reset ]]; then
+    # Under the lock, and this is not bookkeeping. `cursor_forget` is `rm -rf`
+    # on the cursor store; a monitor running in another terminal is unaffected
+    # in memory but its next reattach finds no cursor and attaches at the LIVE
+    # EDGE — a silent gap mid-run, in the one tool whose entire claim is that
+    # it does not have those. The comment further down used to say "every mode
+    # here that opens a socket also advances the cursor store — so there is no
+    # read-only path to leave unlocked", which reasoned about sockets when the
+    # question is writes, and `--reset` is the most destructive write there is
+    # while opening no socket at all (@nvizble, #23).
+    lock_acquire "$MONITOR_STATE_DIR/lock"
     cursor_forget
     info "every cursor forgotten; the next run attaches at the live edge"
     exit "$EX_OK"
@@ -308,8 +328,10 @@ main() {
 
   # Taken before the first attach and held for the whole run. Unlike
   # `quote-ladder`, where reads are lock-free and only writes contend, every
-  # mode here that opens a socket also advances the cursor store — so there is
-  # no read-only path to leave unlocked.
+  # mode here that WRITES the cursor store contends — which is the test, not
+  # whether a socket is opened. `--reset` opens none and writes the most, so it
+  # takes the lock above; `--status` opens none and writes nothing, so it does
+  # not (@nvizble, #23).
   lock_acquire "$MONITOR_STATE_DIR/lock"
   markers_init
 
@@ -321,11 +343,20 @@ main() {
 
   stream_run
 
-  # Did anything attach at all? A cursor is the evidence: it is written on the
-  # first ack, before any event, so a channel with no cursor never got one.
+  # Did anything attach at all? The evidence is the per-run `attached/` marker,
+  # written on every subscribe ack before the cursor is even consulted.
+  #
+  # It used to be the cursor, on the reasoning that a cursor "is written on the
+  # first ack, before any event, so a channel with no cursor never got one".
+  # True of the write, false of the read: `out_of_sync` DELETES the cursor
+  # deliberately, so a run ending between that and the next ack saw no cursor,
+  # reported "no channel ever acknowledged a subscription", and exited
+  # EX_STREAM — discarding `report_verdict` and any LOSSY finding in it
+  # (@nvizble, #23). The marker is only ever created, so it cannot be erased by
+  # the recovery path it is meant to survive.
   local channel attached=0
   for channel in "${CHANNELS[@]}"; do
-    [[ -n $(cursor_read "$channel") ]] && attached=1
+    [[ -e $(attached_marker_path "$channel") ]] && attached=1
   done
   if (( ! attached )); then
     error "no channel ever acknowledged a subscription"

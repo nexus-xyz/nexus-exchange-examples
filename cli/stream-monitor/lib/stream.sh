@@ -322,6 +322,10 @@ handle_frame() {
 handle_subscribed() {
   local channel=$1 join=$2 cursor
   is_sequence "$join" || { warn "$channel: subscribe ack carried no usable seq_at_join"; return 0; }
+  # Record the attach before any of the three cases below, and independently of
+  # the cursor: this is the run's answer to "did anything ever acknowledge a
+  # subscription", and it must survive `out_of_sync` deleting the cursor.
+  : >"$(attached_marker_path "$channel")"
   cursor=$(cursor_read "$channel")
 
   if [[ -z $cursor ]]; then
@@ -465,10 +469,22 @@ resync_over_rest() {
 count_path()        { printf '%s/count/%s' "$MONITOR_STATE_DIR" "$1"; }
 sever_marker_path() { printf '%s/severed/%s' "$MONITOR_STATE_DIR" "$1"; }
 gap_marker_path()   { printf '%s/gap/%s' "$MONITOR_STATE_DIR" "$1"; }
+# Written on a channel's first ack and never removed for the life of the run.
+#
+# The cursor cannot serve as this evidence, which is what run.sh used to use:
+# `out_of_sync` DELETES the cursor on purpose — that is the whole point of a
+# fresh resubscribe — so a run ending while a channel sat between the
+# `out_of_sync` and its next ack reported "no channel ever acknowledged a
+# subscription" and exited EX_STREAM, throwing away `report_verdict` including
+# a LOSSY finding. Reproduced by @nvizble on #23: a run that attached fine and
+# delivered two events exited 3. `--prove-resume`'s 120s deadline makes that
+# window reachable rather than theoretical.
+attached_marker_path() { printf '%s/attached/%s' "$MONITOR_STATE_DIR" "$1"; }
 
 markers_init() {
   mkdir -p -- "$MONITOR_STATE_DIR/count" "$MONITOR_STATE_DIR/severed" \
-    "$MONITOR_STATE_DIR/gap" "$MONITOR_STATE_DIR/seen"
+    "$MONITOR_STATE_DIR/gap" "$MONITOR_STATE_DIR/seen" \
+    "$MONITOR_STATE_DIR/attached"
   # `seen/` TOO. It is documented as per-run ("Kept per run, not per cursor",
   # `cursor.sh`; "grows for the life of a run", README) and nothing implemented
   # that lifetime -- only `--reset` ever removed it.
@@ -480,8 +496,12 @@ markers_init() {
   # delivered 101,102 reported `LOSSY  missing 103-500 ... nothing explains
   # this hole` and exited 4 -- the documented "the failure the app exists to
   # detect", on a run that lost nothing.
+  # `attached/` is per-run for the same reason the four above are: it answers
+  # "did anything attach during THIS run", and a marker surviving into the next
+  # run would answer a question nobody asked.
   rm -f -- "$MONITOR_STATE_DIR"/count/* "$MONITOR_STATE_DIR"/severed/* \
-    "$MONITOR_STATE_DIR"/gap/* "$MONITOR_STATE_DIR"/seen/* 2>/dev/null || true
+    "$MONITOR_STATE_DIR"/gap/* "$MONITOR_STATE_DIR"/seen/* \
+    "$MONITOR_STATE_DIR"/attached/* 2>/dev/null || true
 }
 
 # Increment and echo. Not atomic across processes — but each channel has

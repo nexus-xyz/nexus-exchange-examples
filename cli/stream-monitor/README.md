@@ -62,7 +62,11 @@ much weaker thing and the one an example usually demonstrates by accident.
 `--follow` is the same machinery with no bounds: run it, leave it, and the
 event journal lands on stdout one JSON frame per line while everything
 conversational goes to stderr. `--status` prints the cursor store without
-touching the network; `--reset` forgets it.
+touching the network; `--reset` forgets it, **under the lock** — a reset while
+another monitor is running would send its next reattach to the live edge, which
+is the silent gap this whole app exists to rule out. `--unlock` is the escape
+hatch for a lock a crashed run left behind; it refuses while the recorded pid
+is alive, so it is not a `--force`.
 
 ## Prerequisites
 
@@ -113,7 +117,8 @@ Then, to just leave it running:
 ```bash
 ./run.sh              # follow every channel, resuming; Ctrl-C to stop
 ./run.sh --status     # what the cursor store holds; no network
-./run.sh --reset      # forget every cursor
+./run.sh --reset      # forget every cursor (takes the lock first)
+./run.sh --unlock     # clear a lock a crashed run left behind
 ```
 
 ## Configuration
@@ -174,7 +179,7 @@ documentation; this is the map.
 | [`lib/stream.sh`](./lib/stream.sh) | One supervised `nexus ws` per channel, and the frame handling. |
 | [`lib/preflight.sh`](./lib/preflight.sh) | Everything checked before the first socket, and the generated CLI config. |
 | [`lib/nexus.sh`](./lib/nexus.sh) | The single place the CLI is invoked. |
-| [`lib/lock.sh`](./lib/lock.sh) | The single-writer lock over the cursor store. |
+| [`lib/lock.sh`](./lib/lock.sh) | The single-writer lock over the cursor store. Acquire and release are both rename-aside-then-delete, so an observer never sees a half-removed lock. |
 | [`lib/common.sh`](./lib/common.sh) | Logging, exit codes, small guards. |
 
 `decimal.sh` is deliberately absent — this app never does arithmetic on money,
