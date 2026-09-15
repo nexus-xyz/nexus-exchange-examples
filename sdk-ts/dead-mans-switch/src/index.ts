@@ -38,7 +38,7 @@ import type { ChildProcess } from "node:child_process";
 import type { Readable } from "node:stream";
 
 import { Client, NexusExchangeError } from "@nexus-xyz/exchange-ts";
-import type { CancelOnDisconnectStatus, Order } from "@nexus-xyz/exchange-ts";
+import type { CancelOnDisconnectStatus, Order, OrderStatus } from "@nexus-xyz/exchange-ts";
 
 import { ASSUMED_GRACE_SECONDS, ConfigError, HelpRequested, USAGE, loadConfig } from "./config.js";
 import { PlanError, describePlan, planRestingOrder } from "./plan.js";
@@ -209,8 +209,14 @@ function spawnSession(): Session {
  * sees the session's own account of what it did interleaved with the
  * supervisor's.
  */
-function awaitResting(session: Session): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
+/** What the session tells the parent once the order is on the book. */
+interface RestingOrder {
+  readonly orderId: string;
+  readonly marketId: string;
+}
+
+function awaitResting(session: Session): Promise<RestingOrder> {
+  return new Promise<RestingOrder>((resolve, reject) => {
     let settled = false;
     const timer = setTimeout(() => {
       fail(new Error(`the session did not get an order resting within ${SESSION_READY_TIMEOUT_MS / 1000}s`));
@@ -246,7 +252,10 @@ function awaitResting(session: Session): Promise<string> {
         return;
       }
       if (message.event === "resting") {
-        if (!done()) resolve(message.orderId);
+        // Both halves. The market id was already on the wire and discarded,
+        // which is exactly the argument `getOrder` needs to tell a cancel from
+        // a fill (@nvizble, #20).
+        if (!done()) resolve({ orderId: message.orderId, marketId: message.marketId });
       } else if (message.event === "failed") {
         fail(new Error(`the session failed: ${message.message}`));
       }
@@ -299,6 +308,38 @@ async function stillResting(client: Client, orderId: string): Promise<boolean | 
   }
 }
 
+/**
+ * WHY the order left the book — which absence from `getOpenOrders` cannot say.
+ *
+ * `stillResting` returning false means "not open", and that is equally true of
+ * cancelled, filled, expired and rejected. Printing "PROVEN … by the venue" on
+ * it claimed a cancel-on-disconnect the venue may not have performed, and in
+ * the fill case it also left an open position in the example that says it never
+ * opens one (@nvizble, #20). A PostOnly buy 400bps below mark filling inside
+ * the watch window is unlikely; "unlikely" is not the standard this app holds
+ * itself to anywhere else.
+ *
+ * The second argument was already there and thrown away: the session sends
+ * `marketId` with the resting event (`session.ts:164`) and the parent used to
+ * resolve only the id, which made `SessionMessage.marketId` dead weight.
+ *
+ * `"unknown"` on a transient failure, for the same reason `stillResting` does:
+ * the one moment the app cannot see is the one it must not conclude from.
+ */
+async function terminalStatus(
+  client: Client,
+  orderId: string,
+  marketId: string,
+): Promise<OrderStatus | "unknown"> {
+  try {
+    const order = await client.getOrder(orderId, marketId);
+    return order.status;
+  } catch (error) {
+    if (isTransient(error)) return "unknown";
+    throw error;
+  }
+}
+
 /** The live demonstration. Returns the process exit code. */
 async function liveRun(client: Client, config: Config): Promise<number> {
   const before = await client.getCancelOnDisconnect();
@@ -328,6 +369,8 @@ async function liveRun(client: Client, config: Config): Promise<number> {
 
   let session: Session | null = null;
   let orderId: string | null = null;
+  // Set with `orderId`, from the same message, and read only where it is.
+  let marketId = "";
   let outcome = EXIT_ERROR;
 
   try {
@@ -353,6 +396,17 @@ async function liveRun(client: Client, config: Config): Promise<number> {
     // `active` is `enabled && the exchange-side switch`, and that switch ships
     // off. Placing an order here would rest it on a venue that is not going to
     // cancel it — an example asserting a guarantee it is not getting.
+    if (status.grace_secs === null || status.grace_secs === undefined) {
+      // The whole watch window is computed from this value, and a null one
+      // means the venue did not report it. `ASSUMED_GRACE_SECONDS` is a guess,
+      // fine for a dry run's printed deadline and not fine as the basis for
+      // deciding a live order was cancelled in time. `config.ts` used to claim
+      // this refusal already existed; it did not (@nvizble, #20).
+      log("REFUSED: the venue reports no cancel-on-disconnect grace window (grace_secs is null).");
+      log("  Everything this run would conclude is timed against that number, and it is not available.");
+      log("  Use --dry-run, which prints a deadline from the documented fallback and places nothing.");
+      return EXIT_NOT_PROVEN;
+    }
     if (!status.active) {
       log("REFUSED: cancel-on-disconnect is opted in but not active on this deployment.");
       log("  `active` is the account opt-in AND the exchange-side feature switch, and the");
@@ -364,7 +418,9 @@ async function liveRun(client: Client, config: Config): Promise<number> {
     const grace = graceMs(status);
     log("spawning the session — it will place one order and then be killed");
     session = spawnSession();
-    orderId = await awaitResting(session);
+    const placed = await awaitResting(session);
+    orderId = placed.orderId;
+    marketId = placed.marketId;
 
     // Confirm over REST rather than trusting the session's word for it. The
     // session is about to be destroyed and its report is the last thing it
@@ -401,11 +457,30 @@ async function liveRun(client: Client, config: Config): Promise<number> {
       const resting = await stillResting(client, orderId);
       const elapsed = ((Date.now() - killedAt) / 1000).toFixed(1);
       if (resting === false) {
-        outcome = EXIT_OK;
-        log(`PROVEN: ${orderId} was cancelled ${elapsed}s after the kill, by the venue.`);
-        log("  Nothing this app runs did that — the process that placed it no longer exists.");
-        orderId = null;
-        break;
+        // Off the book is not the same as cancelled. Ask why before claiming a
+        // cancel-on-disconnect the venue may not have performed.
+        const status = await terminalStatus(client, orderId, marketId);
+        if (status === "Cancelled" || status === "Expired") {
+          outcome = EXIT_OK;
+          log(`PROVEN: ${orderId} was ${status.toLowerCase()} ${elapsed}s after the kill, by the venue.`);
+          log("  Nothing this app runs did that — the process that placed it no longer exists.");
+          orderId = null;
+          break;
+        }
+        if (status === "Filled" || status === "PartiallyFilled") {
+          // The example's premise is that this order never trades. It did, so
+          // the run proves nothing about cancel-on-disconnect AND has left a
+          // position the README says it never opens. Both get said.
+          outcome = EXIT_NOT_PROVEN;
+          log(`NOT PROVEN: ${orderId} left the book by ${status}, not by cancellation.`);
+          log("  This says nothing about cancel-on-disconnect — the order was matched.");
+          log("  IMPORTANT: that means this run opened a position. Close it yourself; this app will not.");
+          orderId = null;
+          break;
+        }
+        // "unknown" (a transient read) or a status this code does not classify:
+        // keep watching rather than concluding. The deadline below ends the run.
+        log(`${orderId} is off the book but its status read as ${status}; not concluding yet.`);
       }
       if (interrupted.signal.aborted) {
         outcome = EXIT_INTERRUPTED;
@@ -436,6 +511,12 @@ async function liveRun(client: Client, config: Config): Promise<number> {
       } catch (error) {
         log(`cleanup: FAILED to cancel ${orderId}: ${describe(error)}`);
         log("  Cancel it yourself before leaving this account unattended.");
+        // And say so in the exit code. An interrupted run whose cancel failed
+        // used to still exit 130, which the README defines as "Interrupted.
+        // Cleanup ran." — so a supervisor reading exit codes could not tell
+        // that an order is still out there (@nvizble, #20). The whole point of
+        // this app is that a machine can tell.
+        outcome = EXIT_NOT_PROVEN;
       }
     }
     // THE SWEEP, BEFORE COD IS DISARMED, because `orderId` is not the same

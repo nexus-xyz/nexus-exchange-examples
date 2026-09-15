@@ -50,9 +50,17 @@ const DEFAULT_PRICE_OFFSET_BPS = 400;
 const DEFAULT_WATCH_SLACK_SECONDS = 30;
 
 /**
- * Fallback grace window, used only when the venue reports `grace_secs: null`.
- * That means the feature is unavailable on the deployment, which `--live`
- * refuses on anyway; this keeps the *dry run* able to print a deadline.
+ * Fallback grace window, used when the venue reports `grace_secs: null`.
+ *
+ * This docblock used to add "which `--live` refuses on anyway", and that was
+ * not true: `liveRun` refuses on `!status.active` and never on a null grace
+ * (@nvizble, #20). A deployment reporting `active: true` with a null grace
+ * would plan its whole watch window around this guess while the comment said
+ * that combination could not reach a live run.
+ *
+ * It is a guess, so `liveRun` now refuses it rather than the docblock claiming
+ * someone else does. The dry run still prints a deadline from it, which is
+ * what it is for.
  */
 export const ASSUMED_GRACE_SECONDS = 10;
 
