@@ -66,6 +66,7 @@ import {
   multiply,
   sign,
   sqrt,
+  sqrtRatio,
   subtract,
 } from "./decimal.js";
 import type { SettledWindow, SignCrossCheck } from "./wire.js";
@@ -277,7 +278,13 @@ export function statistics(rates: readonly Dec[]): Stats | null {
   const numerator = subtract(multiply(nDec, sumSquares), multiply(sum, sum));
   const denominator = multiply(nDec, fromInt(n - 1));
   const variance = divide(numerator, denominator, WORKING_SCALE, "variance");
-  const stdev = sqrt(variance, WORKING_SCALE);
+  // NOT `sqrt(variance, ...)`: that would root an already-rounded value, which
+  // is the two-roundings chain this file's own header forbids (@nvizble, #25).
+  // `sqrtRatio` divides inside the radicand, so the truncation below is the
+  // only rounding between the exact BigInt sums and the answer. `variance`
+  // above is still reported, because it is the figure the conventions block
+  // prints — it is just no longer an input to the root.
+  const stdev = sqrtRatio(numerator, denominator, WORKING_SCALE, "stdev");
 
   let atMin = 0;
   let atMax = 0;
@@ -336,8 +343,20 @@ export interface MarketCarry {
   readonly periodsPerYear: Dec | null;
   readonly carryAnnual: Dec | null;
   readonly volatilityAnnual: Dec | null;
-  /** Annualised carry per unit of annualised dispersion. Null when flat. */
+  /**
+   * Annualised carry per unit of annualised dispersion. Null in two distinct
+   * cases, told apart by `dispersion`: the rate never moved, or it moved by
+   * less than `WORKING_SCALE` can represent.
+   */
   readonly ratio: Dec | null;
+  /**
+   * Why `ratio` is null, or `"measured"` when it is not.
+   *
+   * `"flat"` is exact (min === max). `"below-scale"` means the rate moved and
+   * the variance rounded to zero anyway, which reads identically in the output
+   * and is a different fact about the market (@nvizble, #25).
+   */
+  readonly dispersion: Dispersion;
   /** Annualised carry divided by the initial margin rate. Null when unknown. */
   readonly returnOnMargin: Dec | null;
   readonly receivingSide: ReceivingSide;
@@ -351,11 +370,15 @@ export interface AnnualisedInputs {
   readonly initialMarginRate: Dec | null;
 }
 
+/** Which of the three dispersion states a market is in. See `MarketCarry`. */
+export type Dispersion = "measured" | "flat" | "below-scale";
+
 export interface Annualised {
   readonly periodsPerYear: Dec;
   readonly carryAnnual: Dec;
   readonly volatilityAnnual: Dec;
   readonly ratio: Dec | null;
+  readonly dispersion: Dispersion;
   readonly returnOnMargin: Dec | null;
   readonly receivingSide: ReceivingSide;
 }
@@ -393,9 +416,28 @@ export function annualise({
   // undefined rather than infinite. Reported as "flat"; never rendered as a
   // very large number, which is what dividing by an epsilon would produce and
   // which would put the least informative market at the top of the ranking.
-  const ratio = isZero(volatilityAnnual)
-    ? null
-    : divide(carryAnnual, volatilityAnnual, 6, "carry-to-variability ratio");
+  //
+  // `isZero(volatilityAnnual)` is NOT that question, which is the defect
+  // @nvizble measured on #25. The variance is rounded at `WORKING_SCALE`, so
+  // it is zero whenever the true variance is below 0.5e-30 — a rate that DID
+  // move, by less than that. On 40 windows at 0.0000125 with one perturbed, a
+  // 1e-16 wobble returned null and printed "the rate did not move" (false) and
+  // sorted last; a 1e-14 wobble returned 675462804318.82 and sorted first. A
+  // 100x change in a 1e-15-scale wobble flipped a market from bottom to top.
+  //
+  // `stats.atMin === stats.n` is the honest test: every rate equals the
+  // minimum, so min === max and the rate genuinely did not move. It is exact —
+  // a count of `compare(rate, min) === 0` — and cannot be reached by rounding.
+  const flat = stats.atMin === stats.n;
+
+  // Dispersion that exists but rounds away is a THIRD state, and it is not
+  // "flat": the ratio is still undefined, because dividing by the rounded zero
+  // is division by zero, but saying the rate did not move would be a lie about
+  // the market. Distinguished so the renderer can say which one it is.
+  const ratio =
+    flat || isZero(volatilityAnnual)
+      ? null
+      : divide(carryAnnual, volatilityAnnual, 6, "carry-to-variability ratio");
 
   const returnOnMargin =
     initialMarginRate === null || isZero(initialMarginRate)
@@ -408,6 +450,7 @@ export function annualise({
     carryAnnual,
     volatilityAnnual,
     ratio,
+    dispersion: flat ? "flat" : ratio === null ? "below-scale" : "measured",
     returnOnMargin,
     // Positive rate → longs pay, shorts receive. See `wire.ts`'s
     // `SettledWindow.fundingRate`, and the README's note that the spec does

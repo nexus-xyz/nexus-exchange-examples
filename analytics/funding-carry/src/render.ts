@@ -24,6 +24,7 @@ import { DEFAULT_MIN_SAMPLES_VALUE, type Config } from "./config.js";
 import {
   type Dec,
   multiply,
+  roundForDisplay,
   toFixed,
   toString as exactText,
 } from "./decimal.js";
@@ -262,7 +263,16 @@ function renderTable(
       padEnd(row.marketId, MARKET_WIDTH) +
         cell(percent(row.carryAnnual)) +
         cell(percent(row.volatilityAnnual)) +
-        cell(row.ratio === null ? "flat" : toFixed(row.ratio, 2)) +
+        // "flat" only when it is: `below-scale` is a rate that moved too
+        // little to measure, and labelling it flat in the table was the same
+        // overclaim as in the detail block (@nvizble, #25).
+        cell(
+          row.dispersion === "flat"
+            ? "flat"
+            : row.ratio === null
+              ? "<scale"
+              : toFixed(row.ratio, 2),
+        ) +
         cell(percent(row.returnOnMargin, 1)) +
         padStart(String(row.stats?.n ?? 0), 6) +
         padStart(row.receivingSide, 10),
@@ -311,10 +321,19 @@ function renderRowDetail(
         : ` (${interval.irregular} of ${interval.gaps} gaps differed; ` +
           `range ${hours(interval.minMs)}–${hours(interval.maxMs)})`),
   );
-  if (row.ratio === null) {
+  if (row.dispersion === "flat") {
     write(
       "  dispersion       exactly zero — the rate did not move across the " +
         "look-back, so carry/disp is undefined, not infinite",
+    );
+  } else if (row.dispersion === "below-scale") {
+    // The rate DID move; the variance rounded to zero at WORKING_SCALE. Saying
+    // "did not move" here was the wrong half of a real distinction (@nvizble,
+    // #25) — same output, different fact about the market.
+    write(
+      "  dispersion       moved, but by less than the working scale can " +
+        "represent — carry/disp is undefined rather than very large, and " +
+        "this is NOT a flat rate",
     );
   } else {
     write(
@@ -516,6 +535,20 @@ function renderWarnings(report: Report, write: (line: string) => void): void {
   write("");
 }
 
+/**
+ * A value derived by multiplying two already-rounded scale-30 figures.
+ *
+ * Exact as arithmetic and misleading as output: the product carries scale 60
+ * and about 30 digits of information. Goes through `roundForDisplay` like
+ * every other formatter here — this is a display decision, and the unrounded
+ * value is untouched in the ranking arithmetic.
+ */
+function derivedText(value: Dec): string {
+  return value.scale <= WORKING_SCALE
+    ? exactText(value)
+    : exactText(roundForDisplay(value, WORKING_SCALE));
+}
+
 function renderExact(
   ordered: readonly MarketCarry[],
   write: (line: string) => void,
@@ -528,14 +561,20 @@ function renderExact(
     write(`    mean                ${exactText(row.stats.mean)}`);
     write(`    variance            ${exactText(row.stats.variance)}`);
     write(`    stdev               ${exactText(row.stats.stdev)}`);
+    // The three below are PRODUCTS of two already-rounded scale-30 values, so
+    // they land at scale 60 and the trailing 30 digits are an artefact of
+    // exact multiplication, not information (@nvizble, #25 — a derived
+    // interval of 3,599,000 ms printed 60 fraction digits). `decimal.ts` is
+    // emphatic about never printing precision that is not there, so they are
+    // shown at the working scale, where the information actually stops.
     if (row.periodsPerYear !== null) {
-      write(`    periods/year        ${exactText(row.periodsPerYear)}`);
+      write(`    periods/year        ${derivedText(row.periodsPerYear)}`);
     }
     if (row.carryAnnual !== null) {
-      write(`    carry /yr           ${exactText(row.carryAnnual)}`);
+      write(`    carry /yr           ${derivedText(row.carryAnnual)}`);
     }
     if (row.volatilityAnnual !== null) {
-      write(`    dispersion /yr      ${exactText(row.volatilityAnnual)}`);
+      write(`    dispersion /yr      ${derivedText(row.volatilityAnnual)}`);
     }
     if (row.ratio !== null) {
       write(`    carry/dispersion    ${exactText(row.ratio)}`);
@@ -548,10 +587,14 @@ function renderExact(
   prose(
     write,
     "",
-    "Σ rate is exact integer arithmetic. Everything below it is rounded once, " +
-      `at ${WORKING_SCALE} places, at the single division or square root that ` +
-      "produced it — a mean and a standard deviation are not exact in decimal " +
-      "at any finite scale, and this file would rather say so than imply " +
-      "otherwise by printing 30 digits without a caveat.",
+    "Σ rate is exact integer arithmetic. mean, variance and stdev are rounded " +
+      `once, at ${WORKING_SCALE} places, at the single division or square root ` +
+      "that produced them — a mean and a standard deviation are not exact in " +
+      "decimal at any finite scale, and this file would rather say so than " +
+      "imply otherwise by printing 30 digits without a caveat. periods/year, " +
+      "carry /yr and dispersion /yr are exact products of two such values, so " +
+      `they are arithmetically exact at scale 60 and informative to about ` +
+      `${WORKING_SCALE}; they are printed at ${WORKING_SCALE}, because the ` +
+      "digits past it describe the rounding rather than the market.",
   );
 }

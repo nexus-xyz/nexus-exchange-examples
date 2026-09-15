@@ -380,9 +380,25 @@ in the whole statistic is the final division. `sqrt` truncates rather than
 rounds, deliberately, so the ratio errs toward flattering a noisy market rather
 than a quiet one — a direction a reader can check.
 
+The standard deviation used to break that promise, and it is worth naming
+because the promise is the selling point. `sqrt(divide(N, D, 30))` is **two**
+roundings: the quotient rounds at 30 places and the root then truncates an
+already-rounded value. @nvizble measured the drift on [#25][pr25] — 366 ulps at
+the 30th digit on a 167-sample array. `decimal.sqrtRatio` now divides inside
+the radicand, so the final truncation is the only rounding between the exact
+`BigInt` sums and the answer. Checked against an independent integer reference
+on a 167-sample array: the one-step value matches `floor(√(N/D)·10³⁰)` exactly
+and the old two-step was 8,188 ulps low.
+
+[pr25]: https://github.com/nexus-xyz/nexus-exchange-examples/pull/25
+
 **No value ever passes through a JS `number`**, and rounding happens only in
 the renderer, on the way to a column. `--exact` prints the full-scale strings
-so the two can be compared.
+so the two can be compared — at the working scale, not beyond it. `carry /yr`,
+`dispersion /yr` and `periods/year` are exact products of two scale-30 values,
+so they are arithmetically exact at scale 60 and informative to about 30; the
+digits past 30 describe the rounding rather than the market, and printing them
+would be the thing this section says the app does not do.
 
 `fromWire` also accepts a JSON number where the spec promised a string, tags it
 `from-json-number`, and the tool reports any field that arrived that way — the
@@ -422,7 +438,7 @@ per-deployment configuration and not part of the contract.
 
 ## How it works
 
-Nine small files, each about one problem. The comments in them are the real
+Ten small files, each about one problem. The comments in them are the real
 documentation; this is the map.
 
 | File | What it owns |
@@ -435,7 +451,17 @@ documentation; this is the map.
 | [`config.ts`](./src/config.ts) | Environment parsing and the host guards. |
 | [`rest.ts`](./src/rest.ts) | One hardened unauthenticated `GET`. |
 | [`budget.ts`](./src/budget.ts) | Pacing, and reading the ceiling from response headers instead of a table. |
+| [`async.ts`](./src/async.ts) | Bounded concurrency and the abortable sleep, so a slow venue cannot outlive a Ctrl-C. |
 | [`index.ts`](./src/index.ts) | Wiring and lifecycle. |
+
+> **The `account-statement` links below resolve once [#22][pr22] merges.** That
+> directory is not on `main` yet; this example does not import from it, so the
+> merge order does not matter for correctness — the links are provenance, and
+> they dangle until then. The `order-loader` citations in the source resolve
+> already: [#18][pr18] merged on 2026-09-14.
+
+[pr22]: https://github.com/nexus-xyz/nexus-exchange-examples/pull/22
+[pr18]: https://github.com/nexus-xyz/nexus-exchange-examples/pull/18
 
 `decimal.ts`, `async.ts`, `budget.ts`, `config.ts` and `rest.ts` are **copied**
 from [`account-statement`](../account-statement) rather than imported, per

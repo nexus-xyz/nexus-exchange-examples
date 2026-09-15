@@ -342,6 +342,10 @@ export async function collect(
       carryAnnual: annualised?.carryAnnual ?? null,
       volatilityAnnual: annualised?.volatilityAnnual ?? null,
       ratio: annualised?.ratio ?? null,
+      // An excluded or un-annualised market has no dispersion verdict at all;
+      // "below-scale" is the honest default because it is the one that makes
+      // no claim about whether the rate moved.
+      dispersion: annualised?.dispersion ?? "below-scale",
       returnOnMargin: annualised?.returnOnMargin ?? null,
       receivingSide: annualised?.receivingSide ?? "flat",
       excluded,

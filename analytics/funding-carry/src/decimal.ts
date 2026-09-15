@@ -351,6 +351,49 @@ function isqrt(value: bigint): bigint {
  * check; the opposite would quietly promote whichever market happened to round
  * up.
  */
+/**
+ * `sqrt(a / b)`, truncated at `places` fraction digits, in ONE operation.
+ *
+ * `sqrt(divide(a, b, places))` is two roundings, not one: the quotient is
+ * rounded at `places` and the root then truncates that already-rounded value.
+ * @nvizble measured the drift on #25 — 366 ulps at the 30th digit on a
+ * 167-sample ETH-shaped array — against the promise this file, `carry.ts` and
+ * the README all make, that a value is "rounded once, at the single division
+ * or square root that produced it". Two roundings is a chain of intermediate
+ * quotients, which is the exact thing `divide`'s own docstring forbids.
+ *
+ * Here the division happens inside the radicand, at full radicand precision,
+ * so the only rounding is the final truncation:
+ *
+ *   sqrt(a/b) * 10^places = sqrt( a.units * 10^(b.scale - a.scale + 2*places)
+ *                                 / b.units )
+ *
+ * Truncating the radicand before `isqrt` is safe and not a second rounding,
+ * because `floor(sqrt(floor(x))) === floor(sqrt(x))` for non-negative integer
+ * `x` — the identity @nvizble verified over 240,000 cases when reviewing
+ * `isqrt` itself.
+ *
+ * Truncated rather than rounded for the reason `sqrt` gives below: the result
+ * is a dispersion that becomes a denominator, and the smallest value
+ * consistent with the data makes any ratio built on it the largest, which is
+ * the direction a reader can check.
+ */
+export function sqrtRatio(a: Dec, b: Dec, places: number, what = "sqrt of a ratio"): Dec {
+  if (b.units === 0n) throw new DivideByZeroError(what);
+  if (a.units < 0n !== b.units < 0n && a.units !== 0n) {
+    throw new RangeError(`${what}: sqrt of a negative ratio`);
+  }
+  const shift = b.scale - a.scale + 2 * places;
+  let numerator = a.units < 0n ? -a.units : a.units;
+  let denominator = b.units < 0n ? -b.units : b.units;
+  if (shift >= 0) {
+    numerator *= 10n ** BigInt(shift);
+  } else {
+    denominator *= 10n ** BigInt(-shift);
+  }
+  return { units: isqrt(numerator / denominator), scale: places };
+}
+
 export function sqrt(value: Dec, places: number): Dec {
   if (value.units < 0n) {
     throw new RangeError(`sqrt of a negative value: ${toString(value)}`);
