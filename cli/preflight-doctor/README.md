@@ -73,7 +73,7 @@ PASS  ws          wss://api.testnet.nexus.xyz/indexer — /stream upgraded (HTTP
 PASS  credentials the CLI authenticated against testnet and read your open orders
                   → nothing to do.
 ──────────────────────────────────────────────────────────────────────────────
-9 passed, 3 warning(s), 0 failed, 0 skipped.
+10 passed, 3 warning(s), 0 failed, 0 skipped.
 ```
 
 Every check produces a verdict **and a next step**. A check that can say "this
@@ -310,11 +310,18 @@ Two layers, because either alone has a hole:
    which key it is", and it is worth resisting: a key id prefix identifies an
    account in a support channel, and a reader who needs to tell two keys apart
    can compare lengths.
-2. **Every byte of foreign text is filtered.** curl's stderr, the CLI's stderr,
-   anything off the wire goes through `redact` before printing. That is the
+2. **Every byte of foreign text that is printed is filtered.** The CLI's
+   stderr and anything off the wire goes through `redact` first. That is the
    layer covering the paths nobody thought about — an error that quotes the
    request it tried to sign, a stack trace, a verbose dump. Layer 1 is the
    design; layer 2 makes it true anyway.
+
+   **curl's stderr is a third case and this section used to describe it
+   wrongly.** It is captured to a file and never read, so it is not redacted
+   because it is never printed (@nvizble, #21). That fails safe and it also
+   discards text worth having — TLS errors, and the protocol error behind a
+   failed `ws://` probe. Surfacing it through `redact` is the better end state
+   and is not done here.
 
 `redact` **over-redacts on purpose**: it replaces the registered secrets, then
 any long high-entropy run that looks like one. It will sometimes eat something

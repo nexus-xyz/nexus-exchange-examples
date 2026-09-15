@@ -42,7 +42,18 @@ check_env() {
     return
   fi
 
-  record env warn "no credentials configured — $detail" \
+  # `skip`, not `warn`. The README promises "everything optional degrades to a
+  # `skip`" and defines exit 3 as "a warning will bite you later" — so a
+  # credential-less run, which is the documented CI happy path, could never
+  # reach exit 0 and a CI step following the README could never go green
+  # (@nvizble, #21).
+  #
+  # The distinction that resolves it: absent is a SKIP, because the check could
+  # not run. Present-but-wrong stays a WARN, because something is actually
+  # misconfigured — the half-configured pair above is still a warning, and so
+  # is every other branch here. Nothing loses signal; the no-signal case stops
+  # pretending to be one.
+  record env skip "no credentials configured — $detail" \
     "the transport checks below need none. For the credential check, mint a testnet pair with \`nexus keys create\`, or run \`nexus setup\`."
 }
 
@@ -80,7 +91,10 @@ check_cli() {
   CLI_VERSION_LINE=""
 
   if ! command -v nexus >/dev/null 2>&1; then
-    record cli warn "the \`nexus\` CLI is not on PATH" \
+    # Skip for the same reason as `check_env`'s absent-credentials branch: the
+    # check could not run, which is not the same as finding something wrong.
+    # A CLI that IS present but misbehaves stays a warn below.
+    record cli skip "the \`nexus\` CLI is not on PATH" \
       "install it with \`curl https://cli.nexus.xyz | sh\`. The transport checks below do not need it; the credential check does."
     return
   fi
@@ -165,8 +179,6 @@ check_reach() {
   REACH_CLASS=$PROBE_CLASS
   local rid=$PROBE_REQUEST_ID curl_exit=$PROBE_CURL_EXIT
   REACH_DATE=$PROBE_DATE
-  REACH_RATELIMIT_LIMIT=$(header_value 'x-ratelimit-limit')
-  REACH_RATELIMIT_REMAINING=$(header_value 'x-ratelimit-remaining')
   REACH_LAG_MS=$(header_value 'x-indexer-lag-ms')
 
   # Corroboration, never the rule. `x-request-id` is present exactly when the
@@ -437,7 +449,6 @@ check_health() {
 
   # The lag header rides on every response, so it costs nothing and is read
   # first: it is the fastest way to see a venue that is up and behind.
-  local lag_note=""
   if [[ ${REACH_LAG_MS:-} =~ ^[0-9]+$ ]]; then
     local lag_s=$(( REACH_LAG_MS / 1000 ))
     if (( lag_s > DOCTOR_LAG_WARN_SECONDS )); then
@@ -450,7 +461,7 @@ check_health() {
 
   probe_http GET "${REST_BASE}/status"
   if [[ $PROBE_CLASS != served ]]; then
-    record health warn "GET /status answered HTTP $PROBE_STATUS ($PROBE_CLASS)$lag_note" \
+    record health warn "GET /status answered HTTP $PROBE_STATUS ($PROBE_CLASS)" \
       "the venue is reachable but not reporting health. Treat the data below as suspect."
     return
   fi

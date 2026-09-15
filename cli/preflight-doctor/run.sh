@@ -145,6 +145,15 @@ report_checks() {
     # have to go and find the matching advice.
     [[ -n ${CHECK_STEPS[$i]} ]] && printf '%18s→ %s\n' "" "${CHECK_STEPS[$i]}"
   done
+  # `|| true`, because the loop body's last command is a `[[ ]] &&` test: an
+  # empty next-step on the LAST check makes the loop return 1, `set -e` fires
+  # at the call site, and `hr`, `report_summary` and the exit-code mapping are
+  # all skipped — the run dies silently having printed the checks and no
+  # verdict. Latent today (all 60 `record` calls pass a 4th argument) but
+  # `record`'s signature documents it as optional and `common.sh` implements
+  # `${4:-}`, so it is armed for the next contributor. @nvizble on #21, and it
+  # is the same silent-exit class this README records having fixed twice.
+  return 0
 }
 
 report_summary() {
@@ -160,16 +169,37 @@ report_summary() {
   printf '%d passed, %d warning(s), %d failed, %d skipped.\n' "$pass" "$warn" "$fail" "$skip"
 }
 
-# JSON without jq, because the tool has to work when jq is not installed —
-# and the values here are this script's own strings, not arbitrary input. Only
-# the two characters JSON cannot carry raw are escaped.
+# JSON without jq, because the tool has to work when jq is not installed.
+#
+# The comment here used to say "the values here are this script's own strings,
+# not arbitrary input". That is false, and @nvizble said so on #21: findings
+# interpolate a jq-extracted `.status` and service names straight off the wire
+# (`checks.sh:465-475`). A control byte in any of them produced output that
+# `json.loads` rejects -- from the flag whose entire purpose is being machine
+# read.
+#
+# So every C0 control character is escaped, not just the ones with short
+# forms. `\uXXXX` is the general escape JSON defines for the rest; a raw
+# control byte below 0x20 is invalid in a JSON string whatever produced it.
 json_escape() {
   local s=$1
   s=${s//\\/\\\\}
   s=${s//\"/\\\"}
   s=${s//$'\n'/\\n}
   s=${s//$'\t'/\\t}
-  s=${s//$'\r'/}
+  s=${s//$'\r'/\\r}
+  s=${s//$'\b'/\\b}
+  s=${s//$'\f'/\\f}
+  # The rest of the C0 range plus DEL, one at a time: bash cannot match a
+  # character class inside a `${//}` replacement, and this is a short loop over
+  # a short string rather than a hot path.
+  local i ch esc
+  for i in 1 2 3 4 5 6 11 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 127; do
+    ch=$(printf "\\$(printf '%03o' "$i")")
+    [[ $s == *"$ch"* ]] || continue
+    printf -v esc '\\u%04x' "$i"
+    s=${s//"$ch"/$esc}
+  done
   printf '%s' "$s"
 }
 

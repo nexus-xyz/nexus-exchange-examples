@@ -224,6 +224,23 @@ check "a failure outranks a warning" "fail" "$(worst_verdict)"
 record e ok "fine" "nothing"
 check "a later ok does not clear a failure" "fail" "$(worst_verdict)"
 
+# The documented happy path reaches exit 0.
+#
+# `check_env` and `check_cli` used to `warn` when credentials and the CLI were
+# simply ABSENT, so a credential-less run -- which README:102-103 calls the
+# degrade-to-skip case and which a CI step following the README performs --
+# always produced `warn`, i.e. exit 3, "a warning will bite you later"
+# (@nvizble, #21). Exit 0 was unreachable from the documented invocation.
+#
+# Absent is a skip: the check could not run. Present-but-wrong is still a warn.
+CHECK_NAMES=(); CHECK_VERDICTS=(); CHECK_FINDINGS=(); CHECK_STEPS=()
+record env skip "no credentials configured" "mint a pair"
+record cli skip "the nexus CLI is not on PATH" "install it"
+record rest ok "reachable" ""
+check "a credential-less run is ok, not warn" "ok" "$(worst_verdict)"
+record env warn "half a pair is configured" "copy them across"
+check "a MISCONFIGURED credential is still a warning" "warn" "$(worst_verdict)"
+
 # A skip is not a pass. "Not checked" has to stay distinguishable from "fine",
 # or a reader reads an unrun check as a clean bill of health.
 CHECK_NAMES=(); CHECK_VERDICTS=(); CHECK_FINDINGS=(); CHECK_STEPS=()

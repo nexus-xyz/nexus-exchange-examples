@@ -266,7 +266,6 @@ resolve_host() {
 # `curl --http1.1` sends it and prints what came back.
 WS_STATUS=0
 WS_HAS_ACCEPT=0
-WS_BODY=""
 WS_CLASS=""
 
 # ws_probe_url <ws-or-wss-url> -- the HTTP URL curl can actually dial.
@@ -308,7 +307,7 @@ ws_probe_url() {
 # constant makes the probe reproducible.
 probe_ws() {
   local url=$1 raw exit_code=0
-  WS_STATUS=0; WS_HAS_ACCEPT=0; WS_BODY=""; WS_CLASS=""
+  WS_STATUS=0; WS_HAS_ACCEPT=0; WS_CLASS=""
 
   # A successful upgrade leaves the connection open, and curl has no reason to
   # ever close it — so a 101 costs the full timeout and exits 28. That is a
@@ -327,9 +326,6 @@ probe_ws() {
   if printf '%s' "$raw" | grep -qi '^sec-websocket-accept:'; then
     WS_HAS_ACCEPT=1
   fi
-  WS_BODY=$(printf '%s' "$raw" |
-    { grep -v '^[A-Za-z0-9-]*:' || true; } | { grep -m1 '[^[:space:]]' || true; })
-  WS_BODY=${WS_BODY:0:200}
 
   case $WS_STATUS in
     101) WS_CLASS=open ;;
