@@ -60,7 +60,7 @@ don't ship a client for.
 | SDK | Directory | Examples |
 | --- | --- | --- |
 | Rust | [`sdk-rust/`](./sdk-rust) | [`risk-guard/`](./sdk-rust/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached · [`liquidation-watch/`](./sdk-rust/liquidation-watch) — how far each mark can move before maintenance margin breaks, ranked by fragility, next to the venue's own ADL record |
-| TypeScript | [`sdk-ts/`](./sdk-ts) | [`risk-guard/`](./sdk-ts/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
+| TypeScript | [`sdk-ts/`](./sdk-ts) | [`risk-guard/`](./sdk-ts/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached · [`dead-mans-switch/`](./sdk-ts/dead-mans-switch) — arms cancel-on-disconnect, then SIGKILLs its own trading session so you can watch the venue cancel for you |
 | Python | [`sdk-python/`](./sdk-python) | [`risk-guard/`](./sdk-python/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
 | MCP | [`sdk-mcp/`](./sdk-mcp) | [`risk-review/`](./sdk-mcp/risk-review) — reviews one account over the MCP tool surface, with an explicit read-only allowlist |
 
@@ -71,6 +71,7 @@ Apps built by scripting [`nexus-exchange-cli`](https://github.com/nexus-xyz/nexu
 | Example | What it shows |
 | --- | --- |
 | [`quote-ladder/`](./cli/quote-ladder) | A ladder of resting post-only orders, kept on one market by a script you can put in a crontab: a reconciler over the CLI, idempotent through derived client order ids, with exact decimal money arithmetic in bash and a single-writer lock. |
+| [`stream-monitor/`](./cli/stream-monitor) | Follows your account's channels over the WebSocket and survives a disconnect: a durable per-channel cursor, a resume that is checked for holes rather than assumed, and the `out_of_sync` path that a monitor which simply reconnects gets wrong. |
 
 ### Track 4 — [`analytics/`](./analytics) · market-data and history tools
 
@@ -81,6 +82,7 @@ and analysis rather than order placement.
 | --- | --- |
 | [`market-report/`](./analytics/market-report) | A venue-wide market report — candles, funding, volume and the venue's own event stats — written to a terminal table, a CSV and a self-contained HTML page. No credentials, no dependencies, and mostly about the data validation an analytics tool needs before it computes anything. |
 | [`account-statement/`](./analytics/account-statement) | A period P&L, fee and funding statement for one account: realized P&L by market, maker/taker fees, funding by direction — then reconciled against the venue's own equity curve, with the residual reported rather than hidden. Lossless decimal money throughout. Zero runtime dependencies. |
+| [`funding-carry/`](./analytics/funding-carry) | Ranks markets by funding carry and how stable that carry has been, against the margin it ties up. Derives the settlement interval instead of assuming 8h, states its annualisation convention, and refuses to rank a market on too few samples. No credentials, zero runtime dependencies. |
 
 ### Track 5 — builder codes
 
