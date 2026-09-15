@@ -239,8 +239,24 @@ resolve_host() {
       RESOLVE_ADDRESSES=$host
       RESOLVE_RCODE=""
     elif command -v getent >/dev/null 2>&1; then
-      RESOLVE_ADDRESSES=$(getent ahostsv4 "$host" 2>/dev/null |
+      # `ahostsv4` first, then `hosts`: macOS ships no `getent` at all and some
+      # BSD-flavoured builds implement only the `hosts` database, so asking for
+      # `ahostsv4` alone is a Linux-only fallback. Both print the address first.
+      RESOLVE_ADDRESSES=$( { getent ahostsv4 "$host" 2>/dev/null ||
+        getent hosts "$host" 2>/dev/null; } |
         { grep -E '^[0-9]+\.' || true; } | awk '{ print $1 }' | sort -u |
+        tr '\n' ' ') || true
+      RESOLVE_ADDRESSES=${RESOLVE_ADDRESSES% }
+      [[ -n $RESOLVE_ADDRESSES ]] && RESOLVE_RCODE=""
+    fi
+
+    # THE macOS SYSTEM RESOLVER. There is no `getent` on macOS, so without this
+    # the fallback above is Linux-only and `DOCTOR_NETWORK=local` -- whose
+    # default host is `localhost` -- still reports "does not resolve" against a
+    # venue that is up, which is the bug the fallback was added to close.
+    if [[ -z $RESOLVE_ADDRESSES ]] && command -v dscacheutil >/dev/null 2>&1; then
+      RESOLVE_ADDRESSES=$(dscacheutil -q host -a name "$host" 2>/dev/null |
+        { grep -E '^ip_address: ' || true; } | awk '{ print $2 }' | sort -u |
         tr '\n' ' ') || true
       RESOLVE_ADDRESSES=${RESOLVE_ADDRESSES% }
       [[ -n $RESOLVE_ADDRESSES ]] && RESOLVE_RCODE=""

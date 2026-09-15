@@ -203,7 +203,7 @@ check_reach() {
   case $class in
     served)
       REACH_OK=1
-      record reach ok "$REST_BASE serves $PUBLIC_PATH — HTTP $status from $answered_by" \
+      record reach ok "$REST_BASE_SAFE serves $PUBLIC_PATH — HTTP $status from $answered_by" \
         "nothing to do. This base URL is correct."
       ;;
     not_routed)
@@ -232,12 +232,12 @@ check_reach() {
       local why=""
       [[ $body == *"no healthy upstream"* ]] && why=" — the gateway matched the route and found no healthy backend behind it"
       record reach fail \
-        "HTTP $status from $REST_BASE$why" \
+        "HTTP $status from $REST_BASE_SAFE$why" \
         "your configuration is right and the venue is down. The prefix matched, so there is nothing here to change: wait and re-run. Check https://status.nexus.xyz or ask in the developer channel if it persists."
       ;;
     dead_upstream)
       record reach fail \
-        "HTTP 500 from $REST_BASE — the host answered but its upstream did not" \
+        "HTTP 500 from $REST_BASE_SAFE — the host answered but its upstream did not" \
         "if this base is \`$LEGACY_BASE_URL\`, see the \`legacy\` check below: that host proxies to a decommissioned service and 500s on every route. Otherwise the venue has an internal error; re-run and report the request id."
       ;;
     rate_limited)
@@ -251,11 +251,11 @@ check_reach() {
       ;;
     transport)
       record reach fail \
-        "nothing answered at $REST_BASE — $(curl_exit_meaning "$curl_exit")" \
+        "nothing answered at $REST_BASE_SAFE — $(curl_exit_meaning "$curl_exit")" \
         "the name resolved, so this is below HTTP: check a proxy, a firewall, or TLS interception on this network."
       ;;
     *)
-      record reach warn "HTTP $status from $REST_BASE, which this tool has no opinion about" \
+      record reach warn "HTTP $status from $REST_BASE_SAFE, which this tool has no opinion about" \
         "report the status and the request id if it persists."
       ;;
   esac
@@ -565,7 +565,7 @@ check_ws() {
   # — otherwise this check sends a reader whose WS base is already correct off
   # to change it.
   if (( routed && down )); then
-    record ws warn "$WS_BASE — $summary" \
+    record ws warn "$WS_BASE_SAFE — $summary" \
       "the route matched, so this WS base is correct. The backend behind it is down; there is nothing to change here. Re-run when the venue is back."
     return
   fi
@@ -573,7 +573,7 @@ check_ws() {
   if (( routed )); then
     local mixed=""
     (( unrouted )) && mixed=" One path is not routed, which is worth a look, but the base itself is right."
-    record ws ok "$WS_BASE — $summary" \
+    record ws ok "$WS_BASE_SAFE — $summary" \
       "a token-gated 401 here is the healthy answer for /ws: mint a single-use token with POST /ws/token, and mint it on the same host you connect to.$mixed"
     return
   fi
@@ -582,12 +582,12 @@ check_ws() {
   # one, and handing it the prefix advice below would send the reader to edit a
   # URL that may well be correct.
   if (( ! answered )); then
-    record ws fail "$WS_BASE — $summary" \
+    record ws fail "$WS_BASE_SAFE — $summary" \
       "nothing answered on either WebSocket path. The REST checks above say whether the host itself is reachable; if they passed, suspect a proxy or firewall that allows HTTPS but blocks an Upgrade."
     return
   fi
 
-  record ws fail "$WS_BASE — $summary" \
+  record ws fail "$WS_BASE_SAFE — $summary" \
     "the WS base is missing the path prefix the REST base has. Derive the WS URL from the REST base, not from the bare origin: \`$DEFAULT_WS_BASE\`, not \`wss://$REST_HOST\`. The TypeScript SDK had exactly this bug; the Rust SDK's Network::Testnet.ws_base() is still None in 0.11.0, which disables WS at the SDK level rather than the network one."
 }
 
