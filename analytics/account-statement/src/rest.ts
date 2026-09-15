@@ -90,9 +90,21 @@ export class ApiError extends Error {
 }
 
 export class TransportError extends Error {
-  constructor(message: string) {
+  /**
+   * `false` for a transport failure that a retry cannot change.
+   *
+   * A `TransportError` is retryable by default because most of them are a
+   * socket that died. An oversized response is not: the body is the size it
+   * is, so the same request produced the same overflow four times before
+   * failing anyway (@nvizble, #22) — three extra full downloads of a body
+   * already known to be too big, against a rate limit this app is careful
+   * with everywhere else.
+   */
+  readonly retryable: boolean;
+  constructor(message: string, retryable = true) {
     super(message);
     this.name = "TransportError";
+    this.retryable = retryable;
   }
 }
 
@@ -247,7 +259,7 @@ export class RestClient {
           attempt < MAX_ATTEMPTS &&
           !this.shutdownSignal.aborted &&
           (rateLimited ||
-            lastError instanceof TransportError ||
+            (lastError instanceof TransportError && lastError.retryable) ||
             (lastError instanceof ApiError && lastError.transient));
         if (!retryable) throw lastError;
 
@@ -387,6 +399,7 @@ export class RestClient {
         if (total > MAX_RESPONSE_BYTES) {
           throw new TransportError(
             `${label}: response exceeded ${MAX_RESPONSE_BYTES} bytes; aborted`,
+            false,
           );
         }
         chunks.push(value);
@@ -547,6 +560,15 @@ export async function paginate<T>(
     const answer = await client.get<T[]>({ path, query, signed: true, weight });
     firstHeaders ??= answer.headers;
 
+    // A 204 or an empty body arrives as `undefined` (`get` returns it for a
+    // zero-length response), and a cursor walk that reached one has simply run
+    // out of pages. It used to reach the TypeError below and crash the run
+    // (@nvizble, #22) — "there is nothing more" read as "the venue is
+    // malformed". A non-array that is actually present still refuses, because
+    // that one IS malformed.
+    if (answer.body === undefined || answer.body === null) {
+      return { rows, capped: false, headers: firstHeaders };
+    }
     if (!Array.isArray(answer.body)) {
       throw new TypeError(`GET ${path}: expected a JSON array`);
     }
@@ -558,10 +580,12 @@ export async function paginate<T>(
       return { rows, capped: false, headers: firstHeaders };
     }
     if (next === cursor) {
-      throw new Error(
-        `GET ${path}: the server repeated cursor ${oneLine(next, 32)}; ` +
-          "stopping rather than looping",
-      );
+      // Stop, but KEEP the rows. Throwing here discarded every page already
+      // read over a server-side bug in the last one, which is the opposite of
+      // what this app does everywhere else — and `capped` plus its caveat is
+      // the machinery that already exists for "the answer is incomplete and
+      // says so" (@nvizble, #22).
+      return { rows, capped: true, headers: firstHeaders };
     }
     cursor = next;
   }

@@ -63,6 +63,13 @@ export interface ActivitySummary {
   readonly total: number;
   readonly byStatus: ReadonlyMap<string, number>;
   readonly capped: boolean;
+  /**
+   * Rows carrying neither `completed_at_ms` nor `created_at_ms`.
+   *
+   * Excluded from `total` and reported separately: they may well belong to the
+   * period, and counting them as if they did was the old behaviour.
+   */
+  readonly unplaceable: number;
 }
 
 export interface Statement {
@@ -401,19 +408,28 @@ async function readActivity(
   );
   const byStatus = new Map<string, number>();
   let total = 0;
+  let unplaceable = 0;
   for (const row of page.rows) {
     const record = asRecord(row);
+    // A row with NEITHER timestamp cannot be placed in the period, and the old
+    // condition counted it anyway: `typeof at === "number"` is false, so the
+    // guard fell through and the row was included wherever it belonged
+    // (@nvizble, #22). That inflates the terminal-order count with orders from
+    // outside the window — quietly, since the count carries no caveat saying
+    // some of it is unplaced. A row we cannot place is a row we cannot claim.
     const at = record["completed_at_ms"] ?? record["created_at_ms"];
-    if (typeof at === "number" && !inPeriod(Math.trunc(at), periodStartMs, periodEndMs)) {
+    if (typeof at !== "number" || !Number.isFinite(at)) {
+      unplaceable += 1;
       continue;
     }
+    if (!inPeriod(Math.trunc(at), periodStartMs, periodEndMs)) continue;
     const marketId = record["market_id"];
     if (config.market !== null && marketId !== config.market) continue;
     const status = typeof record["status"] === "string" ? record["status"] : "unknown";
     byStatus.set(status, (byStatus.get(status) ?? 0) + 1);
     total += 1;
   }
-  return { total, byStatus, capped: page.capped };
+  return { total, byStatus, capped: page.capped, unplaceable };
 }
 
 /** Fold the three row sets into one line per market, plus a total. */

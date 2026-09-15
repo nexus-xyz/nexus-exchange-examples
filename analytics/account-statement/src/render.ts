@@ -252,6 +252,17 @@ function renderActivity(statement: Statement, write: (line: string) => void): vo
   if (activity.capped) {
     write("  (the order-history walk hit the row cap; this is a floor)");
   }
+  if (activity.unplaceable > 0) {
+    // Excluded from the count above rather than folded into it, and said out
+    // loud rather than left as a silent subtraction: a row with no timestamp
+    // may well belong to this period, so the count is a floor for a second,
+    // different reason than the row cap.
+    write(
+      `  (${activity.unplaceable} order(s) carried neither completed_at_ms nor ` +
+        "created_at_ms and could not be placed in the period; they are not " +
+        "counted above and may belong to it)",
+    );
+  }
   write("");
 }
 
@@ -402,7 +413,16 @@ function renderExact(
     write(`    published     ${exactText(reconciliation.publishedPnlDelta)}`);
     write(`    residual      ${exactText(reconciliation.residual)}`);
   }
-  const rounded = [statement.totals.realizedPnl, statement.totals.fees].filter(isRounded);
+  // All four, not the two that happened to be listed. `fundingNet` and
+  // `volume` could round while the note stayed silent, so the line "at least
+  // one column above was rounded" was a claim about a subset of the columns
+  // above it (@nvizble, #22).
+  const rounded = [
+    statement.totals.realizedPnl,
+    statement.totals.fees,
+    statement.totals.fundingNet,
+    statement.totals.volume,
+  ].filter(isRounded);
   if (rounded.length > 0) {
     write(
       "  (at least one column above was rounded for display; these are the " +

@@ -33,10 +33,17 @@ function asString(record: Record<string, unknown>, key: string): string {
 
 function asTimestamp(record: Record<string, unknown>, key: string): number {
   const value = record[key];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new TypeError(`${key}: expected a millisecond timestamp`);
+  if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
+  // An ISO-8601 string where the contract promised a number. Hard-requiring
+  // the number killed EVERY row on a venue that sent strings (@nvizble, #22) —
+  // the same ENG-8439 divergence this app already tolerates for money, refused
+  // here for no reason beyond which helper the field went through. Accepted,
+  // and only when it parses to a finite instant.
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
   }
-  return Math.trunc(value);
+  throw new TypeError(`${key}: expected a millisecond timestamp`);
 }
 
 /** A field whose wire type is being watched. Reported when it disagrees. */
@@ -83,6 +90,37 @@ function money(
   const parsed = fromWire(record[key], field);
   watch.observe(field, parsed.fidelity);
   return parsed.value;
+}
+
+/**
+ * The same, for a field **this app never reads** — null instead of throwing.
+ *
+ * A statement whose thesis is degrading honestly was killing a whole run over
+ * a malformed `position_size`, a number nothing here computes with. @nvizble
+ * reproduced it on #22: three valid funding rows plus one missing
+ * `position_size` discarded the three good rows and produced no statement at
+ * all. The strictness was pointed at the wrong fields.
+ *
+ * Kept on the struct rather than deleted because it is real wire content and
+ * `TypeWatch` still reports its fidelity when it parses — the app declines to
+ * *depend* on it, which is different from declining to look. A field the
+ * statement actually uses (`amount`, `realized_pnl`, `price`, `size` on a
+ * fill) still goes through `money` and still refuses, because there a bad
+ * value would silently change a number a reader acts on.
+ */
+function optionalMoney(
+  watch: TypeWatch,
+  record: Record<string, unknown>,
+  key: string,
+  field: string,
+): Dec | null {
+  try {
+    const parsed = fromWire(record[key], field);
+    watch.observe(field, parsed.fidelity);
+    return parsed.value;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -153,8 +191,10 @@ export interface FundingRow {
   readonly amount: Dec;
   readonly direction: "paid" | "received";
   readonly directionAgrees: boolean;
-  readonly fundingRate: Dec;
-  readonly positionSize: Dec;
+  /** Null when the row stated it unusably — nothing here reads it. */
+  readonly fundingRate: Dec | null;
+  /** Null when the row stated it unusably — nothing here reads it. */
+  readonly positionSize: Dec | null;
   readonly timestampMs: number;
 }
 
@@ -175,8 +215,8 @@ export function parseFunding(watch: TypeWatch, raw: unknown): FundingRow {
     amount,
     direction,
     directionAgrees: agrees,
-    fundingRate: money(watch, record, "funding_rate", "AccountFunding.funding_rate"),
-    positionSize: money(watch, record, "position_size", "AccountFunding.position_size"),
+    fundingRate: optionalMoney(watch, record, "funding_rate", "AccountFunding.funding_rate"),
+    positionSize: optionalMoney(watch, record, "position_size", "AccountFunding.position_size"),
     timestampMs: asTimestamp(record, "timestamp"),
   };
 }
@@ -196,9 +236,10 @@ export interface FundingDepth {
 export interface ClosedPosition {
   readonly marketId: string;
   readonly side: "Long" | "Short";
-  readonly size: Dec;
-  readonly entryPrice: Dec;
-  readonly exitPrice: Dec;
+  /** The next three are null when unusable — nothing here reads them. */
+  readonly size: Dec | null;
+  readonly entryPrice: Dec | null;
+  readonly exitPrice: Dec | null;
   readonly realizedPnl: Dec;
   readonly closedAtMs: number;
 }
@@ -212,9 +253,9 @@ export function parseClosed(watch: TypeWatch, raw: unknown): ClosedPosition {
   return {
     marketId: asString(record, "market_id"),
     side,
-    size: money(watch, record, "size", "ClosedPosition.size"),
-    entryPrice: money(watch, record, "entry_price", "ClosedPosition.entry_price"),
-    exitPrice: money(watch, record, "exit_price", "ClosedPosition.exit_price"),
+    size: optionalMoney(watch, record, "size", "ClosedPosition.size"),
+    entryPrice: optionalMoney(watch, record, "entry_price", "ClosedPosition.entry_price"),
+    exitPrice: optionalMoney(watch, record, "exit_price", "ClosedPosition.exit_price"),
     realizedPnl: money(watch, record, "realized_pnl", "ClosedPosition.realized_pnl"),
     closedAtMs: asTimestamp(record, "closed_at_ms"),
   };

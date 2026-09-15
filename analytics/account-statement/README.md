@@ -378,6 +378,20 @@ documentation; this is the map.
 | [`config.ts`](./src/config.ts) | Environment parsing, host guards, and the window capacity table. |
 | [`render.ts`](./src/render.ts) | Columns, and never letting a rounded figure be the only figure. |
 | [`async.ts`](./src/async.ts) | `sleep`, abort plumbing, one-line error text. |
+
+**What this app refuses, and what it declines to depend on.** A field the
+statement actually computes with — `amount`, `realized_pnl`, `price`, a fill's
+`size` — still refuses a malformed value, because a bad one there silently
+changes a number a reader acts on. A field it never reads — `funding_rate`,
+`position_size`, and a closed position's `size` / `entry_price` / `exit_price`
+— parses to `null` instead. Demanding those was killing whole runs over
+content nothing here uses (@nvizble, [#22][pr22]): three good funding rows plus
+one missing `position_size` produced no statement at all, in a tool whose
+thesis is that a partial answer says so rather than vanishing. `TypeWatch`
+still reports their fidelity when they parse; declining to *depend* on a field
+is not declining to look at it.
+
+[pr22]: https://github.com/nexus-xyz/nexus-exchange-examples/pull/22
 | [`index.ts`](./src/index.ts) | Wiring and lifecycle. |
 
 `decimal.ts`, `signing.ts` and `async.ts` are **copied** from the sibling
