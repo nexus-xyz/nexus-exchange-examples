@@ -93,10 +93,12 @@ async function main(): Promise<void> {
   // the supervisor did, so the two cannot disagree about which deployment,
   // market or price this is. Anything that must vary between them would be a
   // reason for them to be looking at different orders.
+  // No credential re-check here: `Config.apiKey` and `.apiSecret` are
+  // `readonly string`, and `loadConfig` throws before returning if either is
+  // missing. The guard that used to sit here compared them to `undefined`,
+  // which the types make unreachable (@nvizble, #20) — a check that cannot
+  // fire reads as protection and is not.
   const config = loadConfig([]);
-  if (config.apiKey === undefined || config.apiSecret === undefined) {
-    throw new Error("the session was started without credentials");
-  }
 
   const client = buildClient(config);
 
