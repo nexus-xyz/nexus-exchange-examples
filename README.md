@@ -71,6 +71,7 @@ Apps built by scripting [`nexus-exchange-cli`](https://github.com/nexus-xyz/nexu
 | Example | What it shows |
 | --- | --- |
 | [`quote-ladder/`](./cli/quote-ladder) | A ladder of resting post-only orders, kept on one market by a script you can put in a crontab: a reconciler over the CLI, idempotent through derived client order ids, with exact decimal money arithmetic in bash and a single-writer lock. |
+| [`stream-monitor/`](./cli/stream-monitor) | Follows your account's channels over the WebSocket and survives a disconnect: a durable per-channel cursor, a resume that is checked for holes rather than assumed, and the `out_of_sync` path that a monitor which simply reconnects gets wrong. |
 
 ### Track 4 — [`analytics/`](./analytics) · market-data and history tools
 
