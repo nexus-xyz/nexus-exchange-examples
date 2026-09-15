@@ -195,7 +195,10 @@ json_escape() {
   # a short string rather than a hot path.
   local i ch esc
   for i in 1 2 3 4 5 6 11 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 127; do
-    ch=$(printf "\\$(printf '%03o' "$i")")
+    # %b interprets the escape in the ARGUMENT, so the format string stays
+    # constant (SC2059). `printf "\\$(...)"` builds the format from a variable,
+    # which shellcheck flags and which breaks outright if $i ever widens.
+    ch=$(printf '%b' "\\0$(printf '%03o' "$i")")
     [[ $s == *"$ch"* ]] || continue
     printf -v esc '\\u%04x' "$i"
     s=${s//"$ch"/$esc}
