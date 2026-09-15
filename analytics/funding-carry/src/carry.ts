@@ -94,6 +94,17 @@ export const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
  */
 const INTERVAL_CONFIDENCE = 0.6;
 
+/**
+ * Gaps required before `confident` can be true.
+ *
+ * With two timestamps there is ONE gap, so `share` is 1/1 and the cadence is
+ * "confident" on a single observation — which `--min-samples 2` makes reachable
+ * (`config.ts`). Annualising multiplies by ~1251 at an 8h cadence, so a single
+ * mis-timed gap becomes a headline carry figure. Three gaps is the smallest
+ * number for which a modal value means anything at all.
+ */
+const MIN_GAPS_FOR_CONFIDENCE = 3;
+
 /** What the gaps between settled windows say about the settlement cadence. */
 export interface Interval {
   /** The modal gap, in ms. The interval this app annualises against. */
@@ -108,6 +119,17 @@ export interface Interval {
   readonly maxMs: number;
   /** False when the gaps do not agree well enough to annualise from. */
   readonly confident: boolean;
+  /**
+   * The input was strictly increasing. False means a caller handed this
+   * unsorted, and the gaps below describe an ordering that did not happen.
+   */
+  readonly monotonic: boolean;
+  /**
+   * Timestamps repeated exactly. A window returned twice biases the mean and
+   * SHRINKS the variance while every derived gap still agrees, so it flatters
+   * the ranking in both directions at once.
+   */
+  readonly duplicates: number;
 }
 
 /**
@@ -121,10 +143,19 @@ export interface Interval {
  */
 export function deriveInterval(timestampsMs: readonly number[]): Interval | null {
   if (timestampsMs.length < 2) return null;
+  // COUNTED, not silently dropped. The old `if (gap > 0)` discarded both the
+  // zero gaps (a window returned twice) and the negative ones (an unsorted
+  // caller), so `[0, 2h, 1h, 3h]` derived `confident: true` from an ordering
+  // that never happened, and a duplicated window reported "every gap agreed"
+  // while quietly shrinking the variance the ranking sorts on.
   const gaps: number[] = [];
+  let duplicates = 0;
+  let monotonic = true;
   for (let i = 1; i < timestampsMs.length; i += 1) {
     const gap = (timestampsMs[i] as number) - (timestampsMs[i - 1] as number);
     if (gap > 0) gaps.push(gap);
+    else if (gap === 0) duplicates += 1;
+    else monotonic = false;
   }
   if (gaps.length === 0) return null;
 
@@ -148,7 +179,16 @@ export function deriveInterval(timestampsMs: readonly number[]): Interval | null
     irregular: gaps.length - best,
     minMs: Math.min(...gaps),
     maxMs: Math.max(...gaps),
-    confident: share >= INTERVAL_CONFIDENCE,
+    // All four, because each one on its own is a way for a cadence to look
+    // agreed when it is not: too few gaps to have a mode, an ordering that did
+    // not happen, or a repeated window that agrees with itself.
+    confident:
+      share >= INTERVAL_CONFIDENCE &&
+      gaps.length >= MIN_GAPS_FOR_CONFIDENCE &&
+      monotonic &&
+      duplicates === 0,
+    monotonic,
+    duplicates,
   };
 }
 

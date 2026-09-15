@@ -169,10 +169,28 @@ function renderConventions(
         : `${[...intervals].map(hours).join(", ")} — markets differ; each row annualised against its own`;
   write(`  settlement interval   ${intervalText}`);
 
-  const periods = ranked[0]?.periodsPerYear ?? null;
+  // THE SET, not `ranked[0]`. The interval line directly above already says
+  // "markets differ; each row annualised against its own" when they do — and
+  // this line then printed the TOP row's figure as though it were the global
+  // one, contradicting it two lines later. Only state a number when every
+  // ranked market actually shares it.
+  //
+  // Keyed on the RENDERED string, because `Dec` is an object: a `Set<Dec>` of
+  // two structurally equal values has size 2, which would report "differs per
+  // market" for markets that agree.
+  const periodValues = ranked
+    .map((row) => row.periodsPerYear)
+    .filter((p): p is Dec => p !== null && p !== undefined);
+  const periodKeys = new Set(periodValues.map((p) => toFixed(p, 0)));
+  const periodsText =
+    periodKeys.size === 1
+      ? ` (= ${[...periodKeys][0] as string} here)`
+      : periodKeys.size > 1
+        ? " (differs per market — see each row)"
+        : "";
   write(
     `  annualisation         simple: annual = mean per-window rate × ` +
-      `periods/year${periods === null ? "" : ` (= ${toFixed(periods, 0)} here)`}`,
+      `periods/year${periodsText}`,
   );
   prose(
     write,

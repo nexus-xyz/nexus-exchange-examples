@@ -396,6 +396,31 @@ function excludeReason(
   if (interval === null) {
     return "could not derive a settlement interval";
   }
+  // EACH REFUSAL NAMED, because `confident` is now false for four different
+  // reasons and the share-based sentence is only true of one of them. Telling a
+  // reader "the gaps do not agree" about a market whose gaps agree perfectly —
+  // it just had a window returned twice — sends them to look at the venue's
+  // cadence instead of at the duplicate.
+  if (interval.duplicates > 0) {
+    return (
+      `${interval.duplicates} settled window(s) were returned more than once, ` +
+      "which biases the mean and shrinks the dispersion at the same time, so " +
+      "the ranking would flatter this market in both directions"
+    );
+  }
+  if (!interval.monotonic) {
+    return (
+      "settled windows came back out of order, so the derived gaps describe " +
+      "an ordering the venue did not report"
+    );
+  }
+  if (interval.gaps < 3) {
+    return (
+      `only ${interval.gaps} gap(s) between settled windows — a modal cadence ` +
+      "from this few is one observation, and annualising multiplies it by " +
+      "roughly a thousand"
+    );
+  }
   if (!interval.confident) {
     return (
       `settlement gaps do not agree on a cadence (only ` +
