@@ -304,6 +304,19 @@ main() {
     # question is writes, and `--reset` is the most destructive write there is
     # while opening no socket at all (@nvizble, #23).
     lock_acquire "$MONITOR_STATE_DIR/lock"
+    # AND GIVE IT BACK. The `cleanup` trap below -- the only thing that calls
+    # `lock_release` -- is not registered until after this branch has exited,
+    # so taking the lock here leaked it on every `--reset`: the run finished 0
+    # and left a lock naming its own dead pid, and the next run opened with
+    # `warning: clearing a stale lock ... pid N is gone`. Worse if that pid is
+    # later reused by an unrelated live process, since `--unlock` then refuses
+    # it and only a manual `rm -rf` escapes.
+    #
+    # A narrow trap rather than moving `trap cleanup` up: `cleanup` stops the
+    # stream supervisors and signals the process group, none of which a
+    # `--reset` has any business doing. `lock_release` is idempotent and
+    # checks the recorded pid is still ours, so this is safe on every path out.
+    trap lock_release EXIT INT TERM
     cursor_forget
     info "every cursor forgotten; the next run attaches at the live edge"
     exit "$EX_OK"

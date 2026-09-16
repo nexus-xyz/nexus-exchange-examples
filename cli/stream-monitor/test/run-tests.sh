@@ -652,6 +652,30 @@ test_reset_takes_the_lock() {
   finish
 }
 
+test_reset_releases_the_lock_it_took() {
+  start "--reset gives the lock back"
+  export MONITOR_MAX_ATTEMPTS=1
+  script_for fills 1
+  ws "$(ack fills 100)" "$(event fills 101)"
+  run_app --follow
+  expect_cursor fills 101
+
+  # The lock is taken by `--reset` so a running monitor cannot be reset out
+  # from under itself. It has to be given back: the `cleanup` trap that calls
+  # `lock_release` is registered AFTER this branch exits, so `--reset` used to
+  # finish 0 and leave a lock naming its own dead pid, which made the next run
+  # open with a stale-lock warning it had no reason to print.
+  run_app --reset
+  expect_status 0
+  expect_no_lock
+
+  # And the proof it matters: the next run says nothing about a stale lock.
+  run_app --reset
+  expect_status 0
+  expect_silent_about "stale lock"
+  finish
+}
+
 test_a_pidless_lock_does_not_wedge_forever() {
   start "an orphaned lock clears instead of refusing forever"
   # The state a crash between `mkdir` and the pid `printf` leaves -- and, before
@@ -777,6 +801,7 @@ for t in \
   test_a_clean_run_is_not_judged_by_the_previous_one \
   test_interactive_run_exits_clean_and_releases_the_lock \
   test_reset_takes_the_lock \
+  test_reset_releases_the_lock_it_took \
   test_a_pidless_lock_does_not_wedge_forever \
   test_a_fresh_pidless_lock_still_refuses \
   test_unlock_clears_a_dead_lock_but_not_a_live_one \
