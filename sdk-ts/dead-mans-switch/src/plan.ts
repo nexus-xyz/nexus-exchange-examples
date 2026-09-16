@@ -83,7 +83,12 @@ export function planRestingOrder(
   }
 
   const band = priceBandBps(market);
-  if (band !== null && offsetBps > band) {
+  // `>=`, not `>`. At exactly the band the local check passed and the engine
+  // may still refuse admission if its own comparison is strict, which turns a
+  // caught misconfiguration into a rejected order after everything looked fine
+  // (@nvizble, #20). Refusing the edge costs one basis point of range and
+  // removes a disagreement nobody can see from here.
+  if (band !== null && offsetBps >= band) {
     throw new PlanError(
       `NEXUS_DMS_PRICE_OFFSET_BPS is ${offsetBps} bps but ${market.market_id} collars limit prices ` +
         `at ${band} bps from the mark, so the order would be refused at admission. ` +
