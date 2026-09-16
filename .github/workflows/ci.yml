@@ -94,7 +94,7 @@ jobs:
         with:
           persist-credentials: false
       # SHA-pinned because it's third-party: same pin the SDK repos use.
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
         with:
           toolchain: stable
       # Third-party too, so pinned by SHA on the same reasoning as above: a
@@ -135,6 +135,23 @@ jobs:
       - name: Typecheck
         working-directory: ${{ matrix.dir }}
         run: mypy .
+      # An example that ships tests is making a correctness claim, and a claim
+      # nothing re-checks is one that rots. Tests are not required — most
+      # examples are better served by being short enough to read — so the one
+      # failure forgiven here is `unittest`'s exit 5, "found nothing at all",
+      # and it says so out loud rather than passing silently. Discovery is run
+      # either way, so a suite that moved is still found; a suite that broke is
+      # still a failure.
+      - name: Test
+        working-directory: ${{ matrix.dir }}
+        run: |
+          python -m unittest discover -v && exit 0
+          status=$?
+          if [ "$status" -eq 5 ]; then
+            echo "no tests found in ${{ matrix.dir }} — nothing to run"
+            exit 0
+          fi
+          exit "$status"
 
   shell:
     name: shell · ${{ matrix.dir }}

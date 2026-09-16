@@ -100,7 +100,7 @@ requirement:
 | --- | --- | --- |
 | Node / TypeScript | `package-lock.json`, and a `typecheck` or `build` script | `npm ci`, then those scripts |
 | Rust | `Cargo.lock` | `cargo build --locked --all-targets` |
-| Python | `requirements.txt`, everything pinned by `==`, including `mypy` | `pip install -r requirements.txt`, `compileall`, `mypy .` |
+| Python | `requirements.txt`, everything pinned by `==`, including `mypy` | `pip install -r requirements.txt`, `compileall`, `mypy .`, `unittest discover` |
 | Shell (CLI workflows) | at least one `*.sh`, and a README | `bash -n` and `shellcheck` on every script |
 
 **Python: keep `requirements.txt` self-contained.** No `-r`/`-c` includes, no
@@ -205,6 +205,16 @@ CI runs offline: it builds and typechecks, and does not place orders or require
 credentials. No secrets are available to it, and it uses a read-only token. If
 your example includes a live smoke check against testnet, it must degrade
 gracefully when no credentials are present — skip, don't fail.
+
+**Tests, where an example has them, are run — Python today.** The `python` job
+finishes with `python -m unittest discover`, which picks up `test*.py` beside
+your example. Tests are not *required*: most examples are better served by being
+short enough to read, so "found nothing at all" is the one result the step
+forgives, and it prints that rather than passing quietly. Anything else — a
+failure, an import error, a suite that no longer collects — fails the job. An
+example that ships tests is making a correctness claim, and a claim nothing
+re-checks is one that rots. Keep them offline like the rest of the gate: a
+loopback socket is fine, a live venue is not.
 
 CI does not run your example, so building green isn't proof it works. Say in your
 PR that you ran it end-to-end from a clean clone.

@@ -17,9 +17,10 @@
 //     verifies against nothing.
 //
 //  2. **`<path>` is the path the *indexer* verifies, not the path in your
-//     URL.** The `/api/exchange` gateway strips its own prefix before the
-//     request reaches the service that checks the signature, so a request sent
-//     to `https://exchange.nexus.xyz/api/exchange/api/v1/orders` is verified as
+//     URL.** The deployment mounts the API under a path prefix and strips it
+//     before the request reaches the service that checks the signature, so a
+//     request sent to
+//     `https://api.testnet.nexus.xyz/indexer/api/v1/orders` is verified as
 //     `/api/v1/orders`. Sign what the indexer sees. `rest.ts` keeps the two
 //     halves — the signed path and the sent URL — derived from one value each,
 //     so they cannot drift apart.

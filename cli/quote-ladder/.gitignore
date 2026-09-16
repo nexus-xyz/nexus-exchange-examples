@@ -1,0 +1,2 @@
+# Run state: the lock directory this app takes before it writes anything.
+.state/

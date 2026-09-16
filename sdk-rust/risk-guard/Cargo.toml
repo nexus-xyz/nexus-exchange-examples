@@ -1,0 +1,13 @@
+[package]
+name = "risk-guard"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "A standing risk guard for one Nexus Exchange account, built on the Rust SDK."
+
+[dependencies]
+# Pinned exactly, not by range: a reader running this a year from now should get
+# the behaviour the README describes. See CONTRIBUTING § 3.
+nexus-exchange = "=0.9.1"
+rust_decimal = "=1.38.0"
+tokio = { version = "=1.48.0", features = ["rt-multi-thread", "macros", "signal", "time"] }
