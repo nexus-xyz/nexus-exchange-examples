@@ -61,7 +61,7 @@ don't ship a client for.
 | --- | --- | --- |
 | Rust | [`sdk-rust/`](./sdk-rust) | [`risk-guard/`](./sdk-rust/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached · [`liquidation-watch/`](./sdk-rust/liquidation-watch) — how far each mark can move before maintenance margin breaks, ranked by fragility, next to the venue's own ADL record |
 | TypeScript | [`sdk-ts/`](./sdk-ts) | [`risk-guard/`](./sdk-ts/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached · [`dead-mans-switch/`](./sdk-ts/dead-mans-switch) — arms cancel-on-disconnect, then SIGKILLs its own trading session so you can watch the venue cancel for you |
-| Python | [`sdk-python/`](./sdk-python) | [`risk-guard/`](./sdk-python/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached |
+| Python | [`sdk-python/`](./sdk-python) | [`risk-guard/`](./sdk-python/risk-guard) — watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached · [`ccxt-port/`](./sdk-python/ccxt-port) — runs CCXT-shaped code against Nexus through the adapter, side by side with the native client, measuring what the unified layer costs |
 | MCP | [`sdk-mcp/`](./sdk-mcp) | [`risk-review/`](./sdk-mcp/risk-review) — reviews one account over the MCP tool surface, with an explicit read-only allowlist |
 
 ### Track 3 — [`cli/`](./cli) · CLI-driven workflows
