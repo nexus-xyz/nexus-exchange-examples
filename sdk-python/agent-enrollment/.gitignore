@@ -1,0 +1,4 @@
+# A local virtualenv, if you make one here.
+.venv/
+__pycache__/
+.mypy_cache/
