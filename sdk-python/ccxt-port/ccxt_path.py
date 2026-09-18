@@ -150,10 +150,18 @@ def _book_figures(
     return spread_bps, depth, notes
 
 
-def _closes(rows: Sequence[Sequence[float]]) -> tuple[list[float], list[str]]:
-    """Usable closes from ``[ts, o, h, l, c, v]`` rows, oldest first.
+def _closes(
+    rows: Sequence[Sequence[float]], step_ms: int
+) -> tuple[list[tuple[int, float]], list[str]]:
+    """Usable closes from ``[ts, o, h, l, c, v]`` rows, oldest first, timestamped.
 
-    Three refusals, all of them things this venue actually does:
+    The timestamp is carried out with the close rather than discarded, and that
+    is the whole point of this function's return type. A close-to-close return is
+    only a return *over one bucket* if the two buckets are adjacent; a bare list
+    of closes cannot say whether they were, so anything computed from one
+    silently treats a gap as an ordinary step. See :func:`realized_vol_pct`.
+
+    Five refusals, all of them things this venue actually does:
 
     * **A ``timestamp == 0`` row.** The 5m and 1h series each start with one.
       Plotted it lands in 1970; averaged it moves everything. The adapter passes
@@ -162,8 +170,15 @@ def _closes(rows: Sequence[Sequence[float]]) -> tuple[list[float], list[str]]:
     * **The newest bucket is still forming.** Its close and volume are partial,
       so including it makes the most recent return wrong in the direction that
       looks like news. Dropped, always, and counted.
+    * **A repeated timestamp.** Two rows for one bucket are one bucket. Kept
+      first-wins rather than last-wins because the series is sorted ascending and
+      a stable choice is what makes the two paths agree; either way a duplicate
+      must not become a return of its own, which is what it would be if both
+      copies survived — a spurious zero return, dragging the volatility down.
     * **Non-positive closes.** A log return needs a positive price, and a zero
       close is a gap in the feed rather than a market at zero.
+    * **Missing buckets.** Not dropped — they cannot be, they are not there — but
+      counted here and refused as return boundaries downstream.
     """
     notes: list[str] = []
     dated = [(int(row[0]), row) for row in rows if len(row) >= 6]
@@ -175,33 +190,68 @@ def _closes(rows: Sequence[Sequence[float]]) -> tuple[list[float], list[str]]:
         dated.pop()  # the forming bucket
         notes.append("dropped the newest candle: still forming")
 
-    closes: list[float] = []
-    for _, row in dated:
+    unique: list[tuple[int, Sequence[float]]] = []
+    duplicates = 0
+    for ts, row in dated:
+        if unique and unique[-1][0] == ts:
+            duplicates += 1
+            continue
+        unique.append((ts, row))
+    if duplicates:
+        notes.append(f"dropped {duplicates} candle(s) with a duplicate timestamp")
+
+    series: list[tuple[int, float]] = []
+    for ts, row in unique:
         close = as_float(row[4])
         if close is not None and close > 0:
-            closes.append(close)
-    dropped = len(dated) - len(closes)
+            series.append((ts, close))
+    dropped = len(unique) - len(series)
     if dropped:
         notes.append(f"dropped {dropped} candle(s) with an unusable close")
-    return closes, notes
+
+    skipped = _gap_count(series, step_ms)
+    if skipped:
+        notes.append(
+            f"{skipped} gap(s) in the series: the return across each is not one "
+            f"bucket and was skipped"
+        )
+    return series, notes
 
 
-def realized_vol_pct(closes: Sequence[float], step_ms: int) -> float | None:
+def _gap_count(series: Sequence[tuple[int, float]], step_ms: int) -> int:
+    """Adjacent pairs that are not exactly one bucket apart."""
+    return sum(
+        1
+        for (first, _), (second, _) in zip(series, series[1:])
+        if second - first != step_ms
+    )
+
+
+def realized_vol_pct(series: Sequence[tuple[int, float]], step_ms: int) -> float | None:
     """Annualised realized volatility, in percent, or ``None``.
 
     The convention, in full, because every part of it is a choice: the sample
     standard deviation (n−1) of close-to-close **simple** returns over adjacent
-    buckets, with no mean adjustment, scaled by the square root of the number of
+    buckets, about their own mean, scaled by the square root of the number of
     buckets in a 365-day year.
+
+    **Only adjacent buckets.** A pair whose timestamps are not exactly
+    ``step_ms`` apart spans a gap, and the move across it took longer than one
+    bucket. Annualising it with this timeframe's step would scale a 10-minute
+    move as though it were a 5-minute one — inflating the figure, silently, on
+    the one input nobody inspects. Such a pair contributes no return, rather than
+    a wrong one. `_closes` counts them and says so in the notes.
 
     Returns ``None`` rather than a small number when there are fewer than two
     returns to work with. A standard deviation of one sample is zero, and a
     volatility of zero reported next to a real one is worse than a blank.
     """
-    if len(closes) < 3 or step_ms <= 0:
+    if step_ms <= 0:
         return None
     returns = [
-        (later - earlier) / earlier for earlier, later in zip(closes, closes[1:])
+        (later - earlier) / earlier
+        for (first, earlier), (second, later) in zip(series, series[1:])
+        if second - first == step_ms
     ]
     if len(returns) < 2:
         return None
@@ -279,9 +329,10 @@ def scan_market(
     # unsupported timeframe with the 1m series and no indication it substituted.
     # Here, then, the unified layer is the safer of the two.
     rows = exchange.fetch_ohlcv(symbol, timeframe, limit=candle_limit)
-    closes, candle_notes = _closes(rows)
+    step_ms = STEP_MS[timeframe]
+    closes, candle_notes = _closes(rows, step_ms)
     notes.extend(candle_notes)
-    rvol_pct = realized_vol_pct(closes, STEP_MS[timeframe])
+    rvol_pct = realized_vol_pct(closes, step_ms)
 
     trades = exchange.fetch_trades(symbol, limit=trade_limit)
     taker_buy_share, trades_used, trade_notes = _flow(trades)

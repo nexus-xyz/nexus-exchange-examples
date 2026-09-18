@@ -39,6 +39,7 @@ import surface
 import target
 from nexus_exchange import Client, Funds, NetworkConfig
 from nexus_exchange.ccxt_adapter import NexusExchange
+from snapshot import SnapshotClient
 
 # --------------------------------------------------------------------------
 # Fixtures shaped like the live venue, including the parts that are awkward.
@@ -90,6 +91,25 @@ BOOK: dict[str, Any] = {
     "asks": [["69063.5", "2.0"], ["69064.0", "1.0"], ["69500.0", "8.0"]],
 }
 
+#: The same book, with one level sitting **exactly** on the depth-window
+#: boundary — the one place two correct implementations of the same formula
+#: disagree about one payload.
+#:
+#: mid is 69000.8 and a 10 bps window is 69.0008, so the boundary is exactly
+#: 68931.7992. In `Decimal` that level is inside the window; computed in binary
+#: floating point the same boundary lands a hair above the level, and the CCXT
+#: path leaves it out. Depth then differs by that level's whole notional —
+#: ~138k on ~276k — which is a real disagreement about one snapshot rather than
+#: a rounding artefact, and the case `--strict` exists to catch.
+BOUNDARY_BOOK: dict[str, Any] = {
+    "symbol": "BTC-USDX-PERP",
+    "timestamp": 1787195400000,
+    "datetime": "2026-08-20T03:10:00Z",
+    "nonce": 7,
+    "bids": [["69000.3", "1.0"], ["68931.7992", "2.0"]],
+    "asks": [["69001.3", "1.0"]],
+}
+
 #: A `timestamp == 0` leading row, as the 5m and 1h series really arrive, and a
 #: final bucket that is still forming.
 CANDLES: list[list[Any]] = [
@@ -126,6 +146,9 @@ class _Venue:
         #: Set to make the *second* candle fetch return a different series, so
         #: the two halves genuinely disagree — the venue moving between calls.
         self.drift_candles = False
+        #: Set to serve :data:`BOUNDARY_BOOK` instead of :data:`BOOK`, so the two
+        #: paths genuinely disagree about one payload.
+        self.boundary_book = False
         self._candle_calls = 0
         venue = self
 
@@ -163,7 +186,7 @@ class _Venue:
         if path == f"/api/v1/markets/{SYMBOL}/ticker":
             return TICKER
         if path == f"/api/v1/markets/{SYMBOL}/orderbook":
-            return BOOK
+            return BOUNDARY_BOOK if self.boundary_book else BOOK
         if path == f"/api/v1/markets/{SYMBOL}/candles":
             # The venue substitutes the 1m series for an unsupported timeframe
             # and says nothing — the behaviour `native_path.check_timeframe`
@@ -233,49 +256,161 @@ class AsFloatTests(unittest.TestCase):
         self.assertIsNone(ccxt_path.as_float(float("inf")))
 
 
+#: The 1h step every candle test below is built on, matching :data:`CANDLES`.
+HOUR_MS = 3_600_000
+BASE_TS = 1787100000000
+
+
+def _rows(*pairs: tuple[int, float]) -> list[list[float]]:
+    """``[ts, o, h, l, c, v]`` rows from ``(timestamp, close)`` pairs."""
+    return [[float(ts), 1.0, 1.0, 1.0, float(close), 1.0] for ts, close in pairs]
+
+
+def _both_closes(
+    rows: list[list[float]], step_ms: int = HOUR_MS
+) -> tuple[list[tuple[int, float]], list[tuple[int, Decimal]]]:
+    """`_closes` down both paths, from one set of rows."""
+    from nexus_exchange import Ohlcv
+
+    floats, _ = ccxt_path._closes(rows, step_ms)
+    decimals, _ = native_path._closes(
+        [Ohlcv.from_row(list(row)) for row in rows], step_ms
+    )
+    return floats, decimals
+
+
 class CandleHygieneTests(unittest.TestCase):
     def test_drops_zero_timestamp_row_and_forming_bucket(self) -> None:
-        closes, notes = ccxt_path._closes([[float(v) for v in row] for row in CANDLES])
+        series, notes = ccxt_path._closes(
+            [[float(v) for v in row] for row in CANDLES], HOUR_MS
+        )
         # Six rows in: one at ts 0, one still forming, four usable.
-        self.assertEqual(len(closes), 4)
-        self.assertEqual(closes[0], 64250.0)
-        self.assertEqual(closes[-1], 69063.0)
+        self.assertEqual(len(series), 4)
+        self.assertEqual(series[0][1], 64250.0)
+        self.assertEqual(series[-1][1], 69063.0)
         self.assertTrue(any("non-positive timestamp" in note for note in notes))
         self.assertTrue(any("still forming" in note for note in notes))
 
     def test_both_paths_drop_the_same_candles(self) -> None:
-        from nexus_exchange import Ohlcv
-
-        floats, _ = ccxt_path._closes([[float(v) for v in row] for row in CANDLES])
-        decimals, _ = native_path._closes([Ohlcv.from_row(row) for row in CANDLES])
+        floats, decimals = _both_closes([[float(v) for v in row] for row in CANDLES])
         self.assertEqual(len(floats), len(decimals))
-        self.assertEqual([Decimal(str(c)) for c in floats], list(decimals))
+        self.assertEqual(
+            [(ts, Decimal(str(c))) for ts, c in floats], list(decimals)
+        )
 
     def test_sorts_before_dropping_the_forming_bucket(self) -> None:
         shuffled = [CANDLES[4], CANDLES[1], CANDLES[5], CANDLES[2], CANDLES[3]]
-        closes, _ = ccxt_path._closes([[float(v) for v in row] for row in shuffled])
+        series, _ = ccxt_path._closes(
+            [[float(v) for v in row] for row in shuffled], HOUR_MS
+        )
+        closes = [close for _, close in series]
         # The newest row (69050.0) is the one dropped, whatever order it arrived in.
         self.assertNotIn(69050.0, closes)
         self.assertEqual(closes[-1], 69063.0)
 
+    def test_a_duplicate_timestamp_is_collapsed_not_counted_twice(self) -> None:
+        # Two rows for one bucket are one bucket. Left in, the pair would
+        # contribute a return of exactly zero and drag the volatility down.
+        duplicated = _rows(
+            (BASE_TS, 100.0),
+            (BASE_TS, 100.0),
+            (BASE_TS + HOUR_MS, 101.0),
+            (BASE_TS + 2 * HOUR_MS, 99.5),
+            (BASE_TS + 3 * HOUR_MS, 999.0),  # forming, dropped
+        )
+        series, notes = ccxt_path._closes(duplicated, HOUR_MS)
+        self.assertEqual([ts for ts, _ in series],
+                         [BASE_TS, BASE_TS + HOUR_MS, BASE_TS + 2 * HOUR_MS])
+        self.assertTrue(any("duplicate timestamp" in note for note in notes))
+
+    def test_both_paths_collapse_the_same_duplicate(self) -> None:
+        duplicated = _rows(
+            (BASE_TS, 100.0),
+            (BASE_TS, 100.0),
+            (BASE_TS + HOUR_MS, 101.0),
+            (BASE_TS + 2 * HOUR_MS, 999.0),
+        )
+        floats, decimals = _both_closes(duplicated)
+        self.assertEqual([ts for ts, _ in floats], [ts for ts, _ in decimals])
+
+    def test_a_missing_bucket_is_counted_and_named(self) -> None:
+        gapped = _rows(
+            (BASE_TS, 100.0),
+            (BASE_TS + HOUR_MS, 101.0),
+            (BASE_TS + 3 * HOUR_MS, 102.25),  # the 2h bucket never arrived
+            (BASE_TS + 4 * HOUR_MS, 999.0),
+        )
+        _, notes = ccxt_path._closes(gapped, HOUR_MS)
+        self.assertTrue(any("gap" in note for note in notes), notes)
+
 
 class VolatilityTests(unittest.TestCase):
-    def test_none_below_three_closes(self) -> None:
-        self.assertIsNone(ccxt_path.realized_vol_pct([1.0, 2.0], 60_000))
-        self.assertIsNone(native_path.realized_vol_pct([Decimal(1), Decimal(2)], 60_000))
+    def test_none_below_two_returns(self) -> None:
+        self.assertIsNone(
+            ccxt_path.realized_vol_pct([(0, 1.0), (60_000, 2.0)], 60_000)
+        )
+        self.assertIsNone(
+            native_path.realized_vol_pct(
+                [(0, Decimal(1)), (60_000, Decimal(2))], 60_000
+            )
+        )
 
     def test_float_and_decimal_agree_to_well_inside_the_tolerance(self) -> None:
         closes = [100.0, 101.0, 99.5, 102.25, 103.0]
-        as_float = ccxt_path.realized_vol_pct(closes, 300_000)
+        series = [(i * 300_000, c) for i, c in enumerate(closes)]
+        as_float = ccxt_path.realized_vol_pct(series, 300_000)
         as_decimal = native_path.realized_vol_pct(
-            [Decimal(str(c)) for c in closes], 300_000
+            [(ts, Decimal(str(c))) for ts, c in series], 300_000
         )
         assert as_float is not None and as_decimal is not None
         relative = abs(Decimal(str(as_float)) - as_decimal) / as_decimal
         self.assertLess(relative, Decimal("1e-13"))
 
     def test_zero_step_is_refused(self) -> None:
-        self.assertIsNone(ccxt_path.realized_vol_pct([1.0, 2.0, 3.0, 4.0], 0))
+        self.assertIsNone(
+            ccxt_path.realized_vol_pct([(i, float(i)) for i in range(4)], 0)
+        )
+
+    def test_a_return_across_a_gap_is_not_annualised_as_one_bucket(self) -> None:
+        """The regression that matters: a missing bucket must not inflate rvol.
+
+        The gapped series below jumps 99.5 → 102.25 across *two* hours. Counting
+        that as a one-hour return and annualising it with the 1h step reports a
+        move that never happened at that speed. It must contribute nothing, which
+        makes the gapped series produce exactly the figure its contiguous prefix
+        does — and *not* the figure the same closes laid out back-to-back give.
+        """
+        contiguous = [
+            (BASE_TS, 100.0),
+            (BASE_TS + HOUR_MS, 101.0),
+            (BASE_TS + 2 * HOUR_MS, 99.5),
+        ]
+        gapped = contiguous + [(BASE_TS + 4 * HOUR_MS, 102.25)]
+        packed = contiguous + [(BASE_TS + 3 * HOUR_MS, 102.25)]
+
+        across_gap = ccxt_path.realized_vol_pct(gapped, HOUR_MS)
+        prefix_only = ccxt_path.realized_vol_pct(contiguous, HOUR_MS)
+        back_to_back = ccxt_path.realized_vol_pct(packed, HOUR_MS)
+
+        self.assertIsNotNone(across_gap)
+        self.assertEqual(across_gap, prefix_only)
+        self.assertNotEqual(across_gap, back_to_back)
+
+    def test_both_paths_skip_the_same_gap(self) -> None:
+        gapped_f = [
+            (BASE_TS, 100.0),
+            (BASE_TS + HOUR_MS, 101.0),
+            (BASE_TS + 2 * HOUR_MS, 99.5),
+            (BASE_TS + 4 * HOUR_MS, 102.25),
+        ]
+        gapped_d = [(ts, Decimal(str(c))) for ts, c in gapped_f]
+        as_float = ccxt_path.realized_vol_pct(gapped_f, HOUR_MS)
+        as_decimal = native_path.realized_vol_pct(gapped_d, HOUR_MS)
+        assert as_float is not None and as_decimal is not None
+        # Same skipped pair on both sides, so the two still agree to rounding —
+        # which is the property that keeps a data gap out of the parity report.
+        relative = abs(Decimal(str(as_float)) - as_decimal) / as_decimal
+        self.assertLess(relative, Decimal("1e-13"))
 
 
 class BookTests(unittest.TestCase):
@@ -633,25 +768,107 @@ class ScanParityTests(VenueTestCase):
         for gap in parity.gaps(native):
             self.assertTrue(gap.escape_hatch, "a gap with no escape hatch is not actionable")
 
-    def test_both_paths_use_the_same_number_of_requests(self) -> None:
-        self.exchange.load_markets()  # warm the cache, as a run does
+    def test_each_scan_issues_the_same_reads(self) -> None:
+        """The two ``scan`` functions read the same routes: tickers once, then
+        orderbook, candles and trades per market — ``1 + 3N`` each.
+
+        The market list is deliberately outside both windows, and that is the
+        honest framing rather than a convenient one. Neither ``scan`` fetches it:
+        the CCXT half reads the adapter's ``load_markets`` cache, which
+        ``scan._symbols`` filled, and the native half is *handed* a dict that
+        ``scan.run`` fetched. So a market list costs one read per path, and the
+        claim here is only about what the scans themselves do. What a whole run
+        costs is a separate number, measured in
+        :meth:`EndToEndTests.test_a_both_run_reads_the_venue_once_per_route`.
+        """
+        self.exchange.load_markets()  # the cache `_symbols` warms in a real run
         before = len(self.venue.paths)
         ccxt_path.scan(self.exchange, [SYMBOL], "1h", 50, 50, 10.0)
-        unified_requests = len(self.venue.paths) - before
-        markets = {m.market_id: m for m in self.client.fetch_markets()}
+        unified = self.venue.paths[before:]
+
+        markets = markets_of(self.client)  # `run` does this, not `native_path.scan`
         before = len(self.venue.paths)
         native_path.scan(self.client, [SYMBOL], markets, "1h", 50, 50, Decimal("10"))
-        self.assertEqual(len(self.venue.paths) - before, unified_requests)
+        native = self.venue.paths[before:]
 
-    def test_a_venue_that_moves_between_the_two_scans_reports_differs(self) -> None:
-        # The verdict that matters. If the candle series changes under the two
-        # halves, rvol% must be reported as a real disagreement rather than
-        # absorbed as rounding.
+        self.assertEqual(len(unified), 4)  # 1 + 3N, N = 1
+        self.assertEqual(len(native), len(unified))
+        self.assertEqual(
+            sorted(path.split("?")[0] for path in unified),
+            sorted(path.split("?")[0] for path in native),
+        )
+
+    def test_a_genuine_disagreement_about_one_payload_is_reported(self) -> None:
+        # The verdict that matters, and it is about *representation*: one book,
+        # one level exactly on the depth boundary, and the two paths disagree
+        # about whether it is inside the window. Nothing moved between them.
+        self.venue.boundary_book = True
+        unified, native = self._both()
+        rows = {row.field: row for row in parity.compare(unified, native)}
+        self.assertIs(rows["depth_quote"].verdict, parity.Verdict.DIFFERS)
+        self.assertIs(parity.summarise(list(rows.values())).worst, parity.Verdict.DIFFERS)
+
+
+def markets_of(client: Client) -> dict[str, Any]:
+    return {m.market_id: m for m in client.fetch_markets()}
+
+
+class SnapshotTests(VenueTestCase):
+    """The two halves must compare one payload, not two moments."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.snap = SnapshotClient(self.venue.config(), timeout=5.0)
+        self.addCleanup(self.snap.close)
+        self.snap_exchange = NexusExchange(client=self.snap)
+
+    def _both(self) -> tuple[list[ccxt_path.Scan], list[native_path.NativeScan]]:
+        unified = ccxt_path.scan(self.snap_exchange, [SYMBOL], "1h", 200, 200, 10.0)
+        native = native_path.scan(
+            self.snap, [SYMBOL], markets_of(self.snap), "1h", 200, 200, Decimal("10")
+        )
+        return unified, native
+
+    def test_a_venue_that_moves_between_the_two_scans_is_not_a_difference(self) -> None:
+        """The regression. The venue's candle series changes shape on its second
+        fetch — an ordinary tick, on a market that is simply alive. The second
+        fetch never happens, so both paths read the first payload and the parity
+        report says what it should: nothing differs.
+
+        Before the snapshot this asserted the opposite, and that was the bug:
+        `--strict` exited 4 over a market that had merely moved, which is exactly
+        the signal a canary must not emit.
+        """
         self.venue.drift_candles = True
         unified, native = self._both()
         rows = {row.field: row for row in parity.compare(unified, native)}
-        self.assertIs(rows["rvol%"].verdict, parity.Verdict.DIFFERS)
-        self.assertIs(parity.summarise(list(rows.values())).worst, parity.Verdict.DIFFERS)
+        self.assertIsNot(rows["rvol%"].verdict, parity.Verdict.DIFFERS)
+        self.assertIsNot(
+            parity.summarise(list(rows.values())).worst, parity.Verdict.DIFFERS
+        )
+
+    def test_the_second_path_costs_no_requests(self) -> None:
+        ccxt_path.scan(self.snap_exchange, [SYMBOL], "1h", 200, 200, 10.0)
+        before = len(self.venue.paths)
+        replayed_before = self.snap.replayed
+        native_path.scan(
+            self.snap, [SYMBOL], markets_of(self.snap), "1h", 200, 200, Decimal("10")
+        )
+        self.assertEqual(
+            len(self.venue.paths), before,
+            "the second path reached the venue; it must read the snapshot",
+        )
+        self.assertGreater(self.snap.replayed, replayed_before)
+
+    def test_a_failed_read_is_not_cached(self) -> None:
+        # A 404 is not an answer worth replaying: the next caller must get its
+        # own attempt, exactly as it would from a plain client.
+        for _ in range(2):
+            with self.assertRaises(Exception):
+                self.snap._request("GET", "/no-such-route")
+        self.assertEqual(
+            len([p for p in self.venue.paths if "no-such-route" in p]), 2
+        )
 
 
 class RenderTests(unittest.TestCase):
@@ -742,10 +959,57 @@ class EndToEndTests(VenueTestCase):
         self.assertEqual(self._run("--strict")[0], scan_app.EX_OK)
 
     def test_strict_fails_when_the_paths_genuinely_disagree(self) -> None:
-        self.venue.drift_candles = True
+        # One payload, read once, and the two representations of it disagree
+        # about which level is inside the depth window. That is an API
+        # difference, and the only kind `--strict` should exit non-zero over.
+        self.venue.boundary_book = True
         code, output = self._run("--strict")
         self.assertEqual(code, scan_app.EX_PARITY)
         self.assertIn("more than rounding explains", output)
+
+    def test_strict_is_not_tripped_by_a_venue_that_merely_moved(self) -> None:
+        # The canary's whole job: a market ticking between the two scans is not
+        # a finding. Before the snapshot this exited 4.
+        self.venue.drift_candles = True
+        code, _ = self._run("--strict")
+        self.assertEqual(code, scan_app.EX_OK)
+
+    def test_a_both_run_reads_the_venue_once_per_route(self) -> None:
+        """A whole ``--via both`` run costs ``2 + 3N``, not ``4 + 6N``.
+
+        Two flat reads — the market list and the tickers — plus an order book, a
+        candle series and a trade list per market. The native half adds nothing:
+        its market list, its tickers and its three per-market reads are all
+        served from the snapshot the CCXT half filled, which is the same fact
+        that makes the comparison a comparison.
+        """
+        before = len(self.venue.paths)
+        code, output = self._run()
+        self.assertEqual(code, scan_app.EX_OK)
+        self.assertEqual(len(self.venue.paths) - before, 2 + 3 * 1)
+        self.assertIn("both paths read one payload", output)
+
+    def test_a_single_path_run_still_explains_its_blank_columns(self) -> None:
+        # `--via ccxt` refuses to compute on the same degraded inputs as a
+        # comparison run, so it owes the reader the same explanation.
+        for via in ("ccxt", "native"):
+            _, output = self._run("--via", via)
+            self.assertIn("data notes", output, via)
+            self.assertIn("still forming", output, via)
+
+    def test_depth_bps_refuses_nan_and_negative(self) -> None:
+        # `nan` reached the native book comparison and came out as an uncaught
+        # `decimal.InvalidOperation`; a negative window silently reported zero
+        # depth on every market. Both are usage errors.
+        for bad in ("nan", "-1", "inf", "-0.5"):
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    scan_app.main(self._argv("--depth-bps", bad))
+            self.assertEqual(caught.exception.code, scan_app.EX_USAGE, bad)
+
+    def test_depth_bps_accepts_zero_and_a_plain_number(self) -> None:
+        for good in ("0", "10", "7.5"):
+            self.assertEqual(self._run("--depth-bps", good)[0], scan_app.EX_OK, good)
 
     def test_surface_exits_clean_without_scanning(self) -> None:
         before = len(self.venue.paths)

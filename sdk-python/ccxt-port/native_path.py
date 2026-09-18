@@ -120,12 +120,15 @@ def _book_figures(
     return spread_bps, depth, notes
 
 
-def _closes(candles: Sequence[Ohlcv]) -> tuple[list[Decimal], list[str]]:
-    """The same three refusals as the CCXT path, over named fields.
+def _closes(
+    candles: Sequence[Ohlcv], step_ms: int
+) -> tuple[list[tuple[int, Decimal]], list[str]]:
+    """The same five refusals as the CCXT path, over named fields.
 
     Identical logic, and deliberately so: if this dropped a different set of
     candles the parity report would be measuring this module's opinions rather
-    than the two APIs.
+    than the two APIs. The timestamp is carried out alongside the close for the
+    same reason it is there — see `ccxt_path._closes`.
     """
     notes: list[str] = []
     zeroed = [c for c in candles if c.timestamp <= 0]
@@ -138,33 +141,64 @@ def _closes(candles: Sequence[Ohlcv]) -> tuple[list[Decimal], list[str]]:
         usable.pop()  # the forming bucket
         notes.append("dropped the newest candle: still forming")
 
-    closes = [c.close for c in usable if c.close > 0]
-    dropped = len(usable) - len(closes)
+    unique: list[Ohlcv] = []
+    duplicates = 0
+    for candle in usable:
+        if unique and unique[-1].timestamp == candle.timestamp:
+            duplicates += 1
+            continue
+        unique.append(candle)
+    if duplicates:
+        notes.append(f"dropped {duplicates} candle(s) with a duplicate timestamp")
+
+    series = [(c.timestamp, c.close) for c in unique if c.close > 0]
+    dropped = len(unique) - len(series)
     if dropped:
         notes.append(f"dropped {dropped} candle(s) with an unusable close")
-    return closes, notes
+
+    skipped = _gap_count(series, step_ms)
+    if skipped:
+        notes.append(
+            f"{skipped} gap(s) in the series: the return across each is not one "
+            f"bucket and was skipped"
+        )
+    return series, notes
 
 
-def realized_vol_pct(closes: Sequence[Decimal], step_ms: int) -> Decimal | None:
+def _gap_count(series: Sequence[tuple[int, Decimal]], step_ms: int) -> int:
+    """Adjacent pairs that are not exactly one bucket apart."""
+    return sum(
+        1
+        for (first, _), (second, _) in zip(series, series[1:])
+        if second - first != step_ms
+    )
+
+
+def realized_vol_pct(
+    series: Sequence[tuple[int, Decimal]], step_ms: int
+) -> Decimal | None:
     """`ccxt_path.realized_vol_pct`, in exact decimal arithmetic.
 
     Same convention, stated once there and not restated here so the two cannot
     drift: sample standard deviation (n−1) of close-to-close simple returns over
-    adjacent buckets, no mean adjustment, scaled to a 365-day year.
+    adjacent buckets, about their own mean, scaled to a 365-day year — and, for
+    the same reason as there, a pair that spans a gap contributes no return
+    rather than one annualised against the wrong elapsed time.
 
     The division and the square root are the only inexact steps, and both happen
     inside a widened context. A returned value is therefore correct to far more
     digits than the float path can represent — which is the entire point of
     computing it twice.
     """
-    if len(closes) < 3 or step_ms <= 0:
+    if step_ms <= 0:
         return None
     with localcontext() as ctx:
         ctx.prec = VOL_PRECISION
         try:
             returns = [
                 (later - earlier) / earlier
-                for earlier, later in zip(closes, closes[1:])
+                for (first, earlier), (second, later) in zip(series, series[1:])
+                if second - first == step_ms
             ]
             if len(returns) < 2:
                 return None
@@ -243,9 +277,10 @@ def scan_market(
     notes.extend(book_notes)
 
     candles = client.fetch_ohlcv(symbol, timeframe, limit=candle_limit)
-    closes, candle_notes = _closes(candles)
+    step_ms = STEP_MS[timeframe]
+    closes, candle_notes = _closes(candles, step_ms)
     notes.extend(candle_notes)
-    rvol_pct = realized_vol_pct(closes, STEP_MS[timeframe])
+    rvol_pct = realized_vol_pct(closes, step_ms)
 
     trades = client.fetch_trades(symbol, limit=trade_limit)
     taker_buy_share, trades_used, liquidations, trade_notes = _flow(trades)

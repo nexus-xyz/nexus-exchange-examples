@@ -18,7 +18,9 @@ import os
 from dataclasses import dataclass
 from typing import Mapping
 
-from nexus_exchange import Client, Funds, NetworkConfig
+from nexus_exchange import Funds, NetworkConfig
+
+from snapshot import SnapshotClient
 
 #: Testnet's durable REST base — play funds, no real-world value.
 #:
@@ -94,16 +96,24 @@ class Target:
             label=self.label, funds=self.funds, base_url=self.base_url
         )
 
-    def client(self, timeout: float) -> Client:
-        """One :class:`Client`, shared by both halves of the comparison.
+    def client(self, timeout: float) -> SnapshotClient:
+        """One :class:`~snapshot.SnapshotClient`, shared by both halves.
 
-        Deliberately one and not two. The CCXT path and the native path have to
-        read the same deployment through the same transport, or a difference
-        between their answers could be a difference between two connections
-        rather than a difference between the two APIs — which is the only thing
-        this app is trying to measure.
+        Deliberately one and not two, and deliberately a snapshotting one.
+
+        Sharing a client was the obvious half of this and it is not enough: it
+        gives both paths one transport, so a difference between their answers
+        cannot be a difference between two connections. It does nothing about
+        *time*. Each path still issued its own reads, so on a many-market run the
+        two readings of a market were dozens of round-trips apart, and a market
+        that merely ticked in between arrived in the parity report as a field
+        that ``differs``.
+
+        :class:`~snapshot.SnapshotClient` closes that: each route is read once and
+        replayed, so the two paths compare one payload. See `snapshot.py` for why
+        the seam is where it is.
         """
-        return Client(self.network(), timeout=timeout)
+        return SnapshotClient(self.network(), timeout=timeout)
 
     def funds_phrase(self) -> str:
         """What the target's funds are — never an assumption.

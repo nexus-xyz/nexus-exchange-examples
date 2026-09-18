@@ -29,11 +29,12 @@ That is also why this app needs no credentials at all.
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from decimal import Decimal, InvalidOperation
 from typing import NoReturn, Sequence
 
-from nexus_exchange import ApiError, Client, NexusExchangeError
+from nexus_exchange import ApiError, NexusExchangeError
 from nexus_exchange.ccxt_adapter import NexusExchange
 
 import render
@@ -41,7 +42,8 @@ import surface
 from ccxt_path import DEFAULT_DEPTH_BPS, STEP_MS
 from ccxt_path import scan as ccxt_scan
 from native_path import scan as native_scan
-from parity import DEFAULT_TOLERANCE, Verdict, compare, gaps, summarise
+from parity import DEFAULT_TOLERANCE, Summary, Verdict, compare, gaps, summarise
+from snapshot import SnapshotClient
 from target import BASE_URL_ENV, TargetError, resolve
 
 EX_OK = 0
@@ -50,9 +52,9 @@ EX_HOST = 2  # the venue could not be read at all
 EX_NO_DATA = 3  # it answered, and no market produced a comparable figure
 EX_PARITY = 4  # --strict, and the two paths disagreed by more than rounding
 
-#: Per-request ceiling. Tighter than the SDK's 30s default because this makes
-#: 2 + 3N requests in a burst and exits; a run that hangs for half a minute on
-#: one market is a run somebody kills before it prints anything.
+#: Per-request ceiling. Tighter than the SDK's 30s default because a run makes
+#: its 2 + 3N requests in a burst and exits; a run that hangs for half a minute
+#: on one market is a run somebody kills before it prints anything.
 REQUEST_TIMEOUT_SECONDS = 15.0
 
 DEFAULT_TIMEFRAME = "5m"
@@ -82,6 +84,30 @@ def _tolerance(text: str) -> Decimal:
         raise argparse.ArgumentTypeError(f"tolerance must be a decimal (got {text!r})")
     if not value.is_finite() or value < 0:
         raise argparse.ArgumentTypeError("tolerance must be finite and non-negative")
+    return value
+
+
+def _depth_bps(text: str) -> float:
+    """A depth window, refused here rather than deep in the book arithmetic.
+
+    ``float("nan")`` parses, and `nan` then compares false against every
+    threshold: the CCXT path would sum an empty window and report a depth of
+    zero, while the native path builds ``Decimal("nan")`` and raises
+    `InvalidOperation` from inside the comparison — an uncaught traceback, on a
+    flag value. A negative window is quieter and worse: it is well-defined
+    arithmetic that excludes every level, so the run prints a confident ``0``
+    for depth on every market.
+
+    Both are usage errors, so both are caught where usage errors belong.
+    """
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"--depth-bps must be a number (got {text!r})")
+    if not math.isfinite(value) or value < 0:
+        raise argparse.ArgumentTypeError(
+            f"--depth-bps must be finite and non-negative (got {text!r})"
+        )
     return value
 
 
@@ -122,7 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"recent trades to request per market (default: {DEFAULT_TRADES})",
     )
     parser.add_argument(
-        "--depth-bps", type=float, default=DEFAULT_DEPTH_BPS, metavar="BPS",
+        "--depth-bps", type=_depth_bps, default=DEFAULT_DEPTH_BPS, metavar="BPS",
         help=f"how far from the mid to sum depth (default: {DEFAULT_DEPTH_BPS:g})",
     )
     parser.add_argument(
@@ -176,14 +202,18 @@ def _positive(name: str, value: int, ceiling: int) -> int:
 
 def run(args: argparse.Namespace) -> int:
     target = resolve(args.base_url)
-    client: Client | None = None
+    client: SnapshotClient | None = None
     try:
         client = target.client(REQUEST_TIMEOUT_SECONDS)
-        # One transport, two facades over it. `NexusExchange(client=...)` shares
-        # the underlying `Client` rather than opening a second one, so the two
-        # halves cannot differ because of connection-level luck — and, because
-        # the adapter did not create it, `ex.close()` leaves it alone and this
-        # function stays the single owner.
+        # One snapshot, two facades over it. `NexusExchange(client=...)` shares
+        # the underlying client rather than opening a second one, so the two
+        # halves cannot differ because of connection-level luck — and, because it
+        # is a `SnapshotClient`, they cannot differ because of *when* they asked
+        # either: whichever path runs second is served the first one's payloads.
+        # That is what makes a `differs` verdict below mean the two surfaces read
+        # one payload differently, which is the only thing worth alerting on.
+        # Because the adapter did not create the client, `ex.close()` leaves it
+        # alone and this function stays the single owner.
         exchange = NexusExchange(client=client)
 
         entries = surface.probe(exchange)
@@ -226,6 +256,7 @@ def run(args: argparse.Namespace) -> int:
             print(render.native_table(native_scans))
             print()
 
+        summary: Summary | None = None
         if ccxt_scans is not None and native_scans is not None:
             rows = compare(ccxt_scans, native_scans, args.tolerance)
             summary = summarise(rows)
@@ -237,10 +268,22 @@ def run(args: argparse.Namespace) -> int:
             if block:
                 print(block)
                 print()
-            notes = render.notes_block(ccxt_scans, native_scans)
-            if notes:
-                print(notes)
-                print()
+
+        # Outside the comparison, because the notes are not about the
+        # comparison. They say why a column is blank — an empty book side, a
+        # crossed book, a dropped candle, a trade with a side nobody recognises
+        # — and a `--via ccxt` run refuses to compute on exactly the same inputs
+        # for exactly the same reasons. Printing them only when both paths ran
+        # left the documented single-path commands showing a blank column and no
+        # reason for it, which reads as a broken app rather than a quiet market.
+        notes = render.notes_block(ccxt_scans, native_scans)
+        if notes:
+            print(notes)
+            print()
+
+        print(render.snapshot_line(client.fetched, client.replayed))
+
+        if summary is not None:
             if summary.compared == 0:
                 return EX_NO_DATA
             if args.strict and summary.worst is Verdict.DIFFERS:

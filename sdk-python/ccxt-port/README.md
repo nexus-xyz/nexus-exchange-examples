@@ -54,6 +54,8 @@ what the unified layer does not carry
 data notes
   every market  ccxt   · dropped 1 candle(s) with a non-positive timestamp
   every market  ccxt   · dropped the newest candle: still forming
+
+snapshot: 8 request(s) to the venue, 8 replayed from them — both paths read one payload, not two moments
 ```
 
 Notice the two scan tables are identical and the parity table is not. That is the
@@ -164,11 +166,19 @@ that reaches it anyway.
 Stated because every part of them is a choice, not a fact:
 
 - **Realized volatility** is the sample standard deviation (n−1) of
-  close-to-close **simple** returns over adjacent buckets, with no mean
-  adjustment, scaled by the square root of the number of buckets in a **365-day**
+  close-to-close **simple** returns over adjacent buckets, taken **about their
+  own mean**, scaled by the square root of the number of buckets in a **365-day**
   year. The same convention [`analytics/market-report`](../../analytics/market-report)
   uses, so the two are comparable. Fewer than two usable returns produces no
   figure rather than a small one.
+- **Only adjacent buckets produce a return.** A pair of candles whose timestamps
+  are not exactly one timeframe apart spans a gap, and the move across it took
+  longer than one bucket — annualising it against this timeframe's step would
+  report a move that never happened at that speed. Such a pair contributes
+  nothing, and the run says how many it skipped. A repeated timestamp is
+  collapsed to one bucket for the same reason: left in, it would contribute a
+  spurious zero return and drag the figure down. Both paths do this identically,
+  so a gap in the feed is visible in the notes rather than in the parity report.
 - **Spread** is `(ask − bid) / mid × 10,000`, with the mid as the arithmetic mean
   of the two.
 - **Depth** is the sum of `price × amount` over levels within `--depth-bps` of
@@ -223,7 +233,7 @@ python3 scan.py --strict                        # non-zero if the two paths genu
 ### Tests
 
 ```bash
-python3 -m unittest -q      # 73 tests, no network and no credentials
+python3 -m unittest -q      # 86 tests, no network and no credentials
 ```
 
 Most of them run the **real adapter and the real SDK against a real HTTP server
@@ -251,7 +261,7 @@ Flags, with one environment variable.
 | `--timeframe` | `5m` | `1s`, `1m`, `5m` or `1h`. That is the whole set — see below. |
 | `--candles N` | `200` | Candles requested per market, 1–1000. |
 | `--trades N` | `200` | Recent trades requested per market, 1–1000. |
-| `--depth-bps BPS` | `10` | How far from the mid to sum depth. |
+| `--depth-bps BPS` | `10` | How far from the mid to sum depth. Must be finite and non-negative — `nan` and a negative window are refused as usage errors rather than reported as a depth of zero. |
 | `--tolerance REL` | `1e-12` | Relative difference still counted as rounding rather than a real disagreement. |
 | `--base-url URL` | — | Same as `NEXUS_EXCHANGE_API_URL`, and takes precedence over it. |
 | `--surface` | off | Print the capability tables and exit. |
@@ -318,13 +328,47 @@ sibling examples, for a reason worth its own paragraph:
 | [`parity.py`](./parity.py) | Lining the two up, and classifying each pair. |
 | [`surface.py`](./surface.py) | The covered / not-covered tables, read off the live object. |
 | [`render.py`](./render.py) | The terminal report. |
-| [`test_ccxt_port.py`](./test_ccxt_port.py) | 73 tests, offline. |
+| [`snapshot.py`](./snapshot.py) | Reading the venue once, so both halves compare one payload. |
+| [`test_ccxt_port.py`](./test_ccxt_port.py) | 86 tests, offline. |
 
-Both halves share **one `Client`** — `NexusExchange(client=...)` borrows a
-transport rather than opening its own — and make exactly the same number of
-requests. If they did not, a difference between their answers could be a
-difference between two connections rather than a difference between the two APIs,
-which is the only thing this app is trying to measure.
+### Both halves read one payload, not two moments
+
+Sharing a `Client` is the obvious half of this and it is **not enough.**
+`NexusExchange(client=...)` borrows a transport rather than opening its own, so a
+difference between the two answers cannot be a difference between two
+connections. That says nothing about *time*. The two scans run one after the
+other, and if each issued its own reads then on an all-market run the two
+readings of a market would be dozens of round-trips apart — so any ordinary tick
+in between, a new trade or a book update or a candle closing, would arrive in the
+parity report as a field that `differs`, and `--strict` would exit 4 over a
+market that had merely moved. A canary that cannot tell adapter drift from a live
+market is not a canary.
+
+So the comparison runs against a **snapshot**.
+[`SnapshotClient`](./snapshot.py) answers each distinct read once per run and
+replays the stored response to every later caller, which is why whichever path
+runs second costs no round-trips at all. The run prints the counts rather than
+asserting them:
+
+```
+snapshot: 5 request(s) to the venue, 5 replayed from them — both paths read one
+payload, not two moments
+```
+
+The seam is `Client._send`, the one place both halves meet: the adapter calls
+`client._request` for every route, the typed client's readers go through
+`_request` and `_request_page`, and all three bottom out there. Only unsigned
+`GET`s are ever replayed.
+
+What that leaves in the parity report is the thing the report is about — how the
+two surfaces *represent* one payload. Temporal drift is not measured, because it
+is not an API difference.
+
+**What a run costs.** A `--via both` run makes **`2 + 3N`** requests: the market
+list and the tickers once each, plus an order book, a candle series and a trade
+list per market. Each `scan` function issues `1 + 3N` of its own, and the second
+one's are all served from the snapshot — so the two paths *ask* for the same
+things and the venue is read once. Both numbers are pinned by tests.
 
 ### Nine things a CCXT port hits here
 

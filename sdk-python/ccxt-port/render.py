@@ -185,14 +185,20 @@ def gaps_block(gaps: Sequence[Gap]) -> str:
 
 
 def notes_block(
-    ccxt_scans: Sequence[Scan], native_scans: Sequence[NativeScan]
+    ccxt_scans: Sequence[Scan] | None, native_scans: Sequence[NativeScan] | None
 ) -> str:
-    """Everything either path refused to compute on.
+    """Everything either path refused to compute on, from whichever paths ran.
 
-    Both paths are reported even though they agree in normal operation, because
-    the case where they *stop* agreeing — one dropping a candle the other kept —
-    is precisely the case that would make a parity difference look like an API
-    difference.
+    Either side may be ``None`` — that is what `--via ccxt` and `--via native`
+    produce — and the notes are printed either way. A single-path run refuses to
+    compute on the same empty book sides, crossed books, dropped candles and
+    unrecognised trade sides as a comparison run, so it needs the explanation
+    just as much; it simply has one column of it.
+
+    Both paths are reported when both ran, even though they agree in normal
+    operation, because the case where they *stop* agreeing — one dropping a
+    candle the other kept — is precisely the case that would make a parity
+    difference look like an API difference.
 
     A note that applies to every market is printed once, under ``every market``.
     Two of them always do: the venue's ``timestamp == 0`` leading candle and the
@@ -201,12 +207,20 @@ def notes_block(
     the same reasoning `analytics/market-report` uses to keep its routine
     findings from drowning its real ones.
     """
-    native_notes = {scan.symbol: scan.notes for scan in native_scans}
+    unified = list(ccxt_scans or ())
+    exact = list(native_scans or ())
+    ccxt_notes = {scan.symbol: scan.notes for scan in unified}
+    native_notes = {scan.symbol: scan.notes for scan in exact}
+    # Market order comes from whichever path ran, and from the CCXT one when
+    # both did, so the notes line up with the tables printed above them.
+    order: list[str] = [scan.symbol for scan in unified]
+    order += [scan.symbol for scan in exact if scan.symbol not in ccxt_notes]
+
     per_market: list[tuple[str, list[tuple[str, str]]]] = []
-    for scan in ccxt_scans:
-        tagged = [("ccxt", note) for note in scan.notes]
-        tagged += [("native", note) for note in native_notes.get(scan.symbol, [])]
-        per_market.append((scan.symbol, tagged))
+    for symbol in order:
+        tagged = [("ccxt", note) for note in ccxt_notes.get(symbol, [])]
+        tagged += [("native", note) for note in native_notes.get(symbol, [])]
+        per_market.append((symbol, tagged))
     if not any(tagged for _, tagged in per_market):
         return ""
 
@@ -228,3 +242,21 @@ def notes_block(
         for path, note in rest:
             lines.append(f"    {path:<7}· {note}")
     return "\n".join(lines)
+
+
+def snapshot_line(fetched: int, replayed: int) -> str:
+    """What the run actually cost, and what that buys the comparison.
+
+    Printed rather than asserted for the same reason every other number here is:
+    the claim that both halves read one payload is only worth as much as the
+    count that demonstrates it. ``replayed`` is the number of reads answered from
+    the snapshot instead of the venue — on a ``--via both`` run it is what the
+    second path would otherwise have fetched for itself, dozens of round-trips
+    after the first path saw the market.
+    """
+    if replayed:
+        return (
+            f"snapshot: {fetched} request(s) to the venue, {replayed} replayed from "
+            f"them — both paths read one payload, not two moments"
+        )
+    return f"snapshot: {fetched} request(s) to the venue"
