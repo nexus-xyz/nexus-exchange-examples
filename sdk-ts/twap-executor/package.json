@@ -1,0 +1,22 @@
+{
+  "name": "twap-executor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A resumable TWAP executor for one Nexus Exchange parent order, built on the TypeScript SDK.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/plan.test.ts src/run.test.ts",
+    "build": "npm run test --silent",
+    "sync-weights": "tsx src/sync-weights.ts"
+  },
+  "dependencies": {
+    "@nexus-xyz/exchange-ts": "0.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "tsx": "4.23.8",
+    "typescript": "7.0.2"
+  }
+}
