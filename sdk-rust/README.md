@@ -9,6 +9,7 @@ see the [scope rule](../README.md#scope-whole-apps-here-api-demos-with-their-cli
 | --- | --- |
 | [`risk-guard`](./risk-guard) | Watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached. |
 | [`liquidation-watch`](./liquidation-watch) | Computes how far each mark can move before maintenance margin breaks, ranks positions by fragility, and puts the venue's own ADL record next to the estimate. Read-only. |
+| [`latency-probe`](./latency-probe) | Places and cancels post-only orders that cannot fill, and reports p50/p95/p99/max for place→REST ack, place→WS, cancel→REST ack and cancel→WS. A WS frame that never arrives is reported as missing. Cancels and verifies its own orders on exit. |
 
 Adding one? See [CONTRIBUTING.md](../CONTRIBUTING.md). One example per directory:
 `sdk-rust/<example-name>/`.
