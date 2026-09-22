@@ -9,6 +9,7 @@ see the [scope rule](../README.md#scope-whole-apps-here-api-demos-with-their-cli
 | --- | --- |
 | [`risk-guard`](./risk-guard) | Watches one account against exposure, loss and margin limits, and cancels resting orders when one is breached. |
 | [`agent-enrollment`](./agent-enrollment) | Delegates trading to a scoped, expiring agent key — enrolls it, lists it, proves it, revokes it — reading the EIP-712 signing domain from the venue and refusing to sign without it. |
+| [`ccxt-port`](./ccxt-port) | Runs CCXT-shaped market-data code against Nexus through `nexus_exchange.ccxt_adapter`, next to the same scan on the native client, and reports field by field what the unified layer costs. No credentials. |
 
 Adding one? See [CONTRIBUTING.md](../CONTRIBUTING.md). One example per directory:
 `sdk-python/<example-name>/`.
