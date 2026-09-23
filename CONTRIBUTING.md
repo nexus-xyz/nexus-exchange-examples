@@ -103,6 +103,15 @@ requirement:
 | Python | `requirements.txt`, everything pinned by `==`, including `mypy` | `pip install -r requirements.txt`, `compileall`, `mypy .`, `unittest discover` |
 | Shell (CLI workflows) | at least one `*.sh`, and a README | `bash -n` and `shellcheck` on every script |
 
+**List it in `catalog.json`.** Add one entry for your example to
+[`catalog.json`](./catalog.json): its `id` (the directory name), `track`,
+`language`, `path`, a one-line `summary`, whether it needs `credentials`
+(`none` / `optional` / `required`), whether it `writes` (places or cancels
+orders, or changes account state), its `toolchain`, the `setup` commands, and
+the one `run` command. The CLI reads this file for `nexus examples list/show/get`,
+so an example without an entry can't be found there. The `Catalog` CI job fails
+if an example directory has no entry, or an entry points at no directory.
+
 **Python: keep `requirements.txt` self-contained.** No `-r`/`-c` includes, no
 `-e`, and no `--index-url`/`--extra-index-url` — the `==` pins are only a
 guarantee if that file is the whole dependency set, and an alternate index in a

@@ -48,6 +48,17 @@ jobs:
         id: discover
         run: python3 .github/scripts/discover-examples.py
 
+  catalog:
+    name: Catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: catalog.json lists every example, and only examples that exist
+        run: python3 .github/scripts/check-catalog.py
+
   node:
     name: node · ${{ matrix.dir }}
     needs: discover
@@ -190,7 +201,7 @@ jobs:
   # stable name to require.
   ci:
     name: CI
-    needs: [discover, node, rust, python, shell]
+    needs: [discover, catalog, node, rust, python, shell]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
