@@ -1,0 +1,18 @@
+{
+  "name": "book-replica",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A local L2 order-book replica for one Nexus Exchange market, fed by the public WebSocket and cross-checked against REST, with no SDK.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/*.test.ts",
+    "build": "npm run test --silent"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "tsx": "4.23.8",
+    "typescript": "7.0.2"
+  }
+}

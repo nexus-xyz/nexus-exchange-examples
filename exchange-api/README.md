@@ -8,6 +8,7 @@ the wire protocol, signing, and stream handling done by hand.
 | --- | --- |
 | [`trading-terminal/`](./trading-terminal) | A terminal trading desk for one market: HMAC request signing by hand, the `op`-envelope WebSocket protocol, exact decimal money arithmetic, and a write path that places one order and guarantees it is cancelled. Zero runtime dependencies. |
 | [`order-loader/`](./order-loader) | A bulk order loader: reads a file of orders, refuses what the venue would reject before sending anything, and submits the rest through `POST /orders/batch` in weight-optimal chunks — paced against rate-limit budgets read from `GET /account/rate-limit` rather than hardcoded from the tier table. Dry-runs by default. |
+| [`book-replica/`](./book-replica) | A local L2 book replica for one market, fed by the public WebSocket with no credentials: ordered by sequence, re-snapshotted over REST on every `gap`, `out_of_sync` or reconnect, and cross-checked against the REST book, with a divergence reported only when both name the same sequence. Zero runtime dependencies. |
 
 Adding one? See [CONTRIBUTING.md](../CONTRIBUTING.md) and start from
 [`_template/`](../_template). One example per directory: `exchange-api/<example-name>/`.
