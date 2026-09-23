@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/*.test.ts",
+    "build": "npm run test --silent"
   },
   "devDependencies": {
     "@types/node": "26.1.2",

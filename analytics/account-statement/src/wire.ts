@@ -303,6 +303,40 @@ export interface FundingDepth {
 // Closed positions
 // ---------------------------------------------------------------------------
 
+/**
+ * The v0.8.1 name of each `ClosedPosition` field this app reads, and the CCXT
+ * name spec 0.9.74 serves it under instead (ENG-15258 / ENG-16850).
+ *
+ * `exit_price → lastPrice` is the one to read twice. On THIS schema
+ * `lastPrice` is the price the position exited at. On the OPEN `Position` the
+ * same key is the market's last traded price, which is a different number.
+ * It is mapped onto `exitPrice` here, and nowhere else in this app.
+ */
+const CLOSED_SPELLINGS = {
+  marketId: ["market_id", "symbol"],
+  entryPrice: ["entry_price", "entryPrice"],
+  exitPrice: ["exit_price", "lastPrice"],
+  realizedPnl: ["realized_pnl", "realizedPnl"],
+  closedAtMs: ["closed_at_ms", "lastUpdateTimestamp"],
+} as const;
+
+/**
+ * Which of a field's two wire spellings this row carries.
+ *
+ * Reads both so the app is correct before and after 0.9.74 publishes. When a
+ * row carries both, the v0.8.1 name wins, as in the SDK fixes (rs#157, py#89,
+ * ts#86). When it carries neither, the v0.8.1 name is returned so the error
+ * names the field the published spec documents.
+ */
+function spelling(
+  record: Record<string, unknown>,
+  [legacy, ccxt]: readonly [string, string],
+): string {
+  const present = (key: string) => record[key] !== undefined && record[key] !== null;
+  if (present(legacy)) return legacy;
+  return present(ccxt) ? ccxt : legacy;
+}
+
 export interface ClosedPosition {
   readonly marketId: string;
   readonly side: "Long" | "Short";
@@ -320,14 +354,20 @@ export function parseClosed(watch: TypeWatch, raw: unknown): ClosedPosition {
   if (side !== "Long" && side !== "Short") {
     throw new TypeError(`positions/closed: unknown side ${side}`);
   }
+  // `side` and `size` keep their names at 0.9.74; the other five may not.
+  const market = spelling(record, CLOSED_SPELLINGS.marketId);
+  const entry = spelling(record, CLOSED_SPELLINGS.entryPrice);
+  const exit = spelling(record, CLOSED_SPELLINGS.exitPrice);
+  const pnl = spelling(record, CLOSED_SPELLINGS.realizedPnl);
+  const closedAt = spelling(record, CLOSED_SPELLINGS.closedAtMs);
   return {
-    marketId: asString(record, "market_id"),
+    marketId: asString(record, market),
     side,
     size: optionalMoney(watch, record, "size", "ClosedPosition.size"),
-    entryPrice: optionalMoney(watch, record, "entry_price", "ClosedPosition.entry_price"),
-    exitPrice: optionalMoney(watch, record, "exit_price", "ClosedPosition.exit_price"),
-    realizedPnl: money(watch, record, "realized_pnl", "ClosedPosition.realized_pnl"),
-    closedAtMs: asTimestamp(watch, record, "closed_at_ms", "ClosedPosition.closed_at_ms"),
+    entryPrice: optionalMoney(watch, record, entry, `ClosedPosition.${entry}`),
+    exitPrice: optionalMoney(watch, record, exit, `ClosedPosition.${exit}`),
+    realizedPnl: money(watch, record, pnl, `ClosedPosition.${pnl}`),
+    closedAtMs: asTimestamp(watch, record, closedAt, `ClosedPosition.${closedAt}`),
   };
 }
 

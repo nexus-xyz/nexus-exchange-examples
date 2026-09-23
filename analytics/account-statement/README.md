@@ -197,6 +197,14 @@ Everything else this app reads — `Fill.price/size/fee`,
 `AccountFees.volume_30d` — is a decimal string on the wire, as specified. The
 per-run report will say so by staying silent.
 
+**`/positions/closed` is read under both spellings.** Spec 0.9.74 moves it
+onto CCXT's `Position` names: `market_id → symbol`, `entry_price → entryPrice`,
+`exit_price → lastPrice`, `realized_pnl → realizedPnl`,
+`closed_at_ms → lastUpdateTimestamp` (ENG-16850). `parseClosed` accepts either,
+and the v0.8.1 name wins when a row carries both. On a closed position
+`lastPrice` is the **exit** price; on an open one it is the market's last
+trade, so it is mapped onto `exitPrice` here and nowhere else.
+
 ### Funding: which sign means what
 
 **`/funding` publishes `amount` signed: negative when the account paid,
