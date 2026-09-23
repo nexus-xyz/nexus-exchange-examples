@@ -1,0 +1,2 @@
+# Run journals: one JSON file per TWAP run, written by the app. Local state, never committed.
+runs/

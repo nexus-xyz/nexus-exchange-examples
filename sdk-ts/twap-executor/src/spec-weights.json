@@ -1,0 +1,78 @@
+{
+  "source": "https://raw.githubusercontent.com/nexus-xyz/nexus-exchange-api/v0.8.1/openapi.json",
+  "specTag": "v0.8.1",
+  "sha256": "0160c4a5f7799098050e75034409b8a8316361515b289f595330c00faf855aa8",
+  "rule": "An operation absent from `markers` has weight 1 (spec, \"Rate limits\").",
+  "markers": [
+    {
+      "method": "GET",
+      "path": "/account/portfolio-history",
+      "weight": 5,
+      "formula": null,
+      "rateLimitClass": null
+    },
+    {
+      "method": "GET",
+      "path": "/account/summary",
+      "weight": 5,
+      "formula": null,
+      "rateLimitClass": null
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/account/portfolio-history",
+      "weight": 5,
+      "formula": null,
+      "rateLimitClass": null
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/account/summary",
+      "weight": 5,
+      "formula": null,
+      "rateLimitClass": null
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/fills",
+      "weight": 5,
+      "formula": null,
+      "rateLimitClass": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/orders/batch",
+      "weight": 1,
+      "formula": "1 + floor(order_count / 40)",
+      "rateLimitClass": "trading"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/orders/history",
+      "weight": 5,
+      "formula": null,
+      "rateLimitClass": null
+    },
+    {
+      "method": "GET",
+      "path": "/fills",
+      "weight": 5,
+      "formula": null,
+      "rateLimitClass": null
+    },
+    {
+      "method": "POST",
+      "path": "/orders/batch",
+      "weight": 1,
+      "formula": "1 + floor(order_count / 40)",
+      "rateLimitClass": "trading"
+    },
+    {
+      "method": "GET",
+      "path": "/orders/history",
+      "weight": 5,
+      "formula": null,
+      "rateLimitClass": null
+    }
+  ]
+}
