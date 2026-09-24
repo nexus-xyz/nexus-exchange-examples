@@ -1,0 +1,57 @@
+name: Tag catalog
+
+# Every commit on main that passes CI is tagged `catalog-YYYY.MM.DD` (with a
+# `.N` suffix for a second tag the same day), so a nexus-exchange-cli release
+# can pin the catalog and example code it was tested against (ENG-17337):
+# `nexus examples get <id> --ref catalog-2026.09.24`, and the catalog copy built
+# into the CLI records which tag it came from.
+#
+# Tags only follow a green CI run, so every tag is a state in which every
+# example built. Nothing listens for these tags; a tag pushed with the default
+# token triggering no workflow is fine here.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tag-catalog
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+      - name: Tag this commit, unless it already carries a catalog tag
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ ! -f catalog.json ]; then
+            echo "no catalog.json at $SHA; nothing to tag"; exit 0
+          fi
+          python3 .github/scripts/check-catalog.py
+          existing="$(git tag --points-at "$SHA" --list 'catalog-*' | head -1)"
+          if [ -n "$existing" ]; then
+            echo "$SHA is already tagged $existing"; exit 0
+          fi
+          base="catalog-$(date -u +%Y.%m.%d)"
+          tag="$base"; n=1
+          while git rev-parse -q --verify "refs/tags/$tag" >/dev/null; do
+            n=$((n + 1)); tag="$base.$n"
+          done
+          git tag "$tag" "$SHA"
+          git push origin "refs/tags/$tag"
+          echo "tagged $SHA as $tag" >> "$GITHUB_STEP_SUMMARY"

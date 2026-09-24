@@ -112,6 +112,10 @@ the one `run` command. The CLI reads this file for `nexus examples list/show/get
 so an example without an entry can't be found there. The `Catalog` CI job fails
 if an example directory has no entry, or an entry points at no directory.
 
+Every commit on `main` that passes CI is tagged `catalog-YYYY.MM.DD`
+automatically (`tag-catalog.yml`), so a CLI release can pin the catalog and
+example code it was tested against. There is nothing to do by hand.
+
 **Python: keep `requirements.txt` self-contained.** No `-r`/`-c` includes, no
 `-e`, and no `--index-url`/`--extra-index-url` — the `==` pins are only a
 guarantee if that file is the whole dependency set, and an alternate index in a
