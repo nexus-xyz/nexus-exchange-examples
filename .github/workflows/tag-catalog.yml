@@ -9,6 +9,10 @@ name: Tag catalog
 # Tags only follow a green CI run, so every tag is a state in which every
 # example built. Nothing listens for these tags; a tag pushed with the default
 # token triggering no workflow is fine here.
+#
+# `workflow_dispatch` is for recovery and backfill only (a tag the workflow_run
+# trigger missed). It does not check CI status, so dispatch it on a commit whose
+# CI run is green. The step still re-validates catalog.json before tagging.
 
 on:
   workflow_run:
@@ -48,7 +52,7 @@ jobs:
             echo "$SHA is already tagged $existing"; exit 0
           fi
           base="catalog-$(date -u +%Y.%m.%d)"
-          tag="$base"; n=1
+          tag="$base"; n=0
           while git rev-parse -q --verify "refs/tags/$tag" >/dev/null; do
             n=$((n + 1)); tag="$base.$n"
           done
