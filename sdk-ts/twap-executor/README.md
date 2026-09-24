@@ -206,9 +206,6 @@ explicitly in `src/venue.ts` / `src/plan.ts`:
   spellings. A reconcile that read only one would match nothing, and "matched
   nothing" reads as "never placed", which is exactly the double-send this
   design exists to prevent.
-- **SDK 0.4.0's `cancelOrder` omits `market_id`**, which spec v0.8.1 marks
-  `required: true` on `DELETE /orders/{order_id}`. The cancel is sent with the
-  SDK's exported `signRequest` instead, so the signing is still the SDK's.
 
 ## Prerequisites
 
@@ -218,8 +215,8 @@ explicitly in `src/venue.ts` / `src/plan.ts`:
 
 ## Pinned versions
 
-This example pins **`@nexus-xyz/exchange-ts` `0.4.0`**, exact version, with
-`package-lock.json` committed. 0.4.0 is compiled against Exchange API spec
+This example pins **`@nexus-xyz/exchange-ts` `0.5.0`**, exact version, with
+`package-lock.json` committed. 0.5.0 is compiled against Exchange API spec
 **`v0.8.1`**, which is also the tag `src/spec-weights.json` was generated
 from. A test fails if the two ever disagree. Toolchain: `typescript` `7.0.2`,
 `tsx` `4.23.8`, `@types/node` `26.1.2`.

@@ -7,20 +7,13 @@
 //    nothing here does either. A placement whose answer never arrived is
 //    `unknown`, and an unknown placement is resolved by reading, never by
 //    sending again.
-//  * **The one route the pinned SDK gets wrong.** `cancelOrder` in 0.4.0 sends
-//    `DELETE /orders/{id}` with no `market_id`, which spec v0.8.1 marks
-//    `required: true` ("required for routing"); tracked as ENG-17118. It's sent
-//    here with the SDK's own exported `signRequest`, so the signing is still the
-//    SDK's. This is the call one-cancels-other depends on, so it matters.
 
 import {
-  API_VERSION,
   ApiError,
   Client,
   NexusExchangeError,
   TransportError,
   customNetwork,
-  signRequest,
 } from "@nexus-xyz/exchange-ts";
 import type { CancelOnDisconnectStatus, Market, OrderBook, OrderResponse } from "@nexus-xyz/exchange-ts";
 
@@ -162,38 +155,17 @@ export class Venue {
   }
 
   /**
-   * `DELETE /api/v1/orders/{id}?market_id=…`, signed with the SDK's own signer
-   * (ENG-17118: the SDK's `cancelOrder` omits `market_id`).
-   *
-   * The signed path is the one the indexer verifies (`/api/v1/...`, without the
-   * deployment's `/indexer` prefix), and the query is encoded once and used for
-   * both the signature and the URL, as the SDK does internally. Retried on
-   * transient failures: a cancel is idempotent, and a 404 means it's already
-   * gone, which is the goal.
+   * `DELETE /api/v1/orders/{id}?market_id=…`, the call one-cancels-other
+   * depends on. Retried on transient failures: a cancel is idempotent, and a
+   * 404 means it's already gone, which is the goal.
    */
   async cancel(orderId: string, market: string): Promise<void> {
-    const { apiKey, apiSecret } = this.config;
-    if (apiKey === undefined || apiSecret === undefined) throw new Error("cancel needs credentials");
-    const path = `/api/v1/orders/${encodeURIComponent(orderId)}`;
-    const query = new URLSearchParams({ market_id: market }).toString();
     for (let attempt = 1; ; attempt += 1) {
       try {
-        const headers = await signRequest(apiKey, apiSecret, "DELETE", path, query, new Uint8Array(0), Date.now());
-        let response: Response;
-        try {
-          response = await fetch(`${this.client.baseUrl}${path}?${query}`, {
-            method: "DELETE",
-            headers: { ...headers, accept: "application/json", "x-nexus-api-version": API_VERSION },
-            redirect: "manual",
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-          });
-        } catch (error) {
-          throw new TransportError(`DELETE ${path}: ${describe(error)}`);
-        }
-        if (response.ok || response.status === 404) return;
-        const body = (await response.text()).slice(0, 200);
-        throw new ApiError(response.status, body);
+        await this.client.cancelOrder(orderId, market);
+        return;
       } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return;
         if (attempt >= CANCEL_ATTEMPTS || !isTransient(error)) throw error;
         await this.sleep(250 * 2 ** attempt);
       }
