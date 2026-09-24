@@ -11,19 +11,13 @@
 //    `retry-after` with no jitter on top, and it retries a `DELETE` on its own
 //    schedule. Here reads and cancels are retried on `429` and transient
 //    failures, with jitter. An order submission is **never** retried.
-//  * **The one route the pinned SDK gets wrong.** `cancelOrder` in 0.4.0 sends
-//    `DELETE /orders/{id}` with no `market_id`, which spec v0.8.1 marks
-//    `required: true` ("required for routing"). It's sent here with the SDK's
-//    own exported `signRequest`, so the signing is still the SDK's.
 
 import {
-  API_VERSION,
   ApiError,
   Client,
   NexusExchangeError,
   TransportError,
   customNetwork,
-  signRequest,
 } from "@nexus-xyz/exchange-ts";
 import type { Market, OrderBook, OrderRequest, OrderResponse } from "@nexus-xyz/exchange-ts";
 
@@ -220,31 +214,16 @@ export class Venue {
   }
 
   /**
-   * `DELETE /api/v1/orders/{id}?market_id=…`, signed with the SDK's own signer.
-   *
-   * The signed path is the one the indexer verifies (`/api/v1/...`, without the
-   * deployment's `/indexer` prefix), and the query is encoded once and used
-   * for both the signature and the URL, exactly as the SDK does internally.
-   * A cancel is idempotent, so it's retried.
+   * `DELETE /api/v1/orders/{id}?market_id=…`. A cancel is idempotent, so it's
+   * retried, and a 404 means it's already gone, which is the goal.
    */
   cancel(orderId: string, market: string): Promise<void> {
     return this.idempotent("DELETE", "/api/v1/orders/{order_id}", async () => {
-      const { apiKey, apiSecret } = this.config;
-      if (apiKey === undefined || apiSecret === undefined) throw new Error("cancel needs credentials");
-      const path = `/api/v1/orders/${encodeURIComponent(orderId)}`;
-      const query = new URLSearchParams({ market_id: market }).toString();
-      const headers = await signRequest(apiKey, apiSecret, "DELETE", path, query, new Uint8Array(0), Date.now());
-      const response = await this.instrumented(`${this.client.baseUrl}${path}?${query}`, {
-        method: "DELETE",
-        headers: { ...headers, accept: "application/json", "x-nexus-api-version": API_VERSION },
-        redirect: "manual",
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-      if (response.ok || response.status === 404) return; // 404: already gone, which is the goal
-      const body = (await response.text()).slice(0, 200);
-      throw new ApiError(response.status, body, {
-        retryAfterMs: parseRetryAfter(response.headers.get("retry-after")) ?? undefined,
-      });
+      try {
+        await this.client.cancelOrder(orderId, market);
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 404)) throw error;
+      }
     });
   }
 }

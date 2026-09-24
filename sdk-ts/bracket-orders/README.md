@@ -195,11 +195,6 @@ With `--live`, before sending anything:
 
 ### Where the pinned SDK and the live venue disagree
 
-- **SDK 0.4.0's `cancelOrder` omits `market_id`**, which spec v0.8.1 marks
-  `required: true` on `DELETE /orders/{order_id}` (ENG-17118). This is the call
-  one-cancels-other depends on, so it's sent with the SDK's exported
-  `signRequest` instead, as in `sdk-ts/twap-executor` (#38). The signing
-  is still the SDK's.
 - **The venue serves orders in CCXT's vocabulary** (`symbol`, `clientOrderId`,
   `amount`, `filled`, status `closed` for filled), not the spec's (`market_id`,
   `filled_qty`, `Filled`). Everything is read under both spellings.
@@ -225,8 +220,8 @@ exactly where binary floating point would leave dust unprotected.
 
 ## Pinned versions
 
-This example pins **`@nexus-xyz/exchange-ts` `0.4.0`**, exact version, with
-`package-lock.json` committed. 0.4.0 is compiled against Exchange API spec
+This example pins **`@nexus-xyz/exchange-ts` `0.5.0`**, exact version, with
+`package-lock.json` committed. 0.5.0 is compiled against Exchange API spec
 **`v0.8.1`**. Toolchain: `typescript` `7.0.2`, `tsx` `4.23.8`, `@types/node`
 `26.1.2`.
 

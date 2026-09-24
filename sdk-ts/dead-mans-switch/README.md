@@ -237,13 +237,15 @@ leave the process.
 
 ## Pinned versions
 
-Pinned to **`@nexus-xyz/exchange-ts` 0.4.0**, exact version, with
-`package-lock.json` committed. 0.4.0 is compiled against Exchange API spec
+Pinned to **`@nexus-xyz/exchange-ts` 0.5.0**, exact version, with
+`package-lock.json` committed. 0.5.0 is compiled against Exchange API spec
 **v0.8.1**, which is where `GET`/`PUT /account/cancel-on-disconnect`,
 `POST /ws/token` and the three-field `CancelOnDisconnectStatus` come from.
 
 Do not pin this example back to 0.3.0: `getCancelOnDisconnect` /
 `setCancelOnDisconnect` are not in it.
+Nor to 0.4.0: its `cancelOrder` omits the required `market_id`, so the cleanup
+cancel fails (ENG-17118).
 
 ## When it does not fire
 

@@ -506,7 +506,7 @@ async function liveRun(client: Client, config: Config): Promise<number> {
       // runnable at all: the venue was given its chance and did not take it, so
       // the order does not stay.
       try {
-        await client.cancelOrder(orderId);
+        await client.cancelOrder(orderId, marketId);
         log(`cleanup: cancelled ${orderId}`);
       } catch (error) {
         log(`cleanup: FAILED to cancel ${orderId}: ${describe(error)}`);
