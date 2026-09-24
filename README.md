@@ -97,6 +97,7 @@ isn't ready yet.
 /
 ├── README.md              you are here — the catalog index
 ├── CONTRIBUTING.md        standards every example must meet
+├── catalog.json           machine-readable index, read by `nexus examples`
 ├── _template/             copy-to-start scaffold (with a runnable TS stub)
 ├── exchange-api/          track 1
 ├── sdk-rust/              track 2
