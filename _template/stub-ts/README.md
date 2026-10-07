@@ -26,7 +26,7 @@ this file for your app after copying.
 
 ## Pinned versions
 
-This example pins **`@nexus-xyz/exchange-ts` `0.2.0`** exactly (no `^`), plus
+This example pins **`@nexus-xyz/exchange-ts` `0.6.0`** exactly (no `^`), plus
 `tsx` `4.23.8` and `typescript` `7.0.2` for running and typechecking. It targets
 **testnet** — play funds, credited by the faucet, with no real-world value.
 
@@ -47,20 +47,22 @@ npm start
 
 | Variable | Required | What it's for |
 | --- | --- | --- |
-| `NEXUS_EXCHANGE_API_URL` | no | API base URL, e.g. `https://<host>/api/v1`. Overrides the testnet default host — see below. |
+| `NEXUS_EXCHANGE_API_URL` | no | API base URL, e.g. `https://<host>/v1`. Overrides the testnet default host — see below. |
 | `NEXUS_EXCHANGE_API_KEY` | no | API key. Without it, only public market data is fetched. |
 | `NEXUS_EXCHANGE_API_SECRET` | no | API secret (32-byte hex) paired with the key. |
 
 ### About the host
 
-The stub asks for `Network.Testnet` explicitly, which resolves to
-`https://exchange.nexus.xyz/api/v1`. That host **did not serve `/api/v1` from the
-machine this stub was written on** — every market-data route returned the web
-app's 404 page — so if you get a 404 you are probably not doing anything wrong.
+The stub asks for `Network.Testnet` explicitly, which in 0.6.0 resolves to
+`https://api.testnet.nexus.xyz/v1`. The SDK sends the spec's bare paths under it
+(`/markets`, `/account`), so a base ending in the old `/api/v1` layout is
+refused.
 
 Set `NEXUS_EXCHANGE_API_URL` to a base URL that works for you and it takes
-precedence over the network default. With no reachable host the stub prints that
-instruction and exits 1 rather than dumping a stack trace.
+precedence over the network default. It goes through `customNetwork` with
+`funds: "unknown"`, because a URL on its own cannot say what the target moves.
+With no reachable host the stub prints that instruction and exits 1 rather than
+dumping a stack trace.
 
 ## How it works
 

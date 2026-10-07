@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import {
   Client,
   Network,
+  customNetwork,
   ApiError,
   TransportError,
 } from "@nexus-xyz/exchange-ts";
@@ -36,20 +37,23 @@ const apiSecret = process.env.NEXUS_EXCHANGE_API_SECRET;
 // moves. `Network.Mainnet` deliberately throws in this SDK version.
 //
 // NEXUS_EXCHANGE_API_URL overrides the host when you need a specific deployment
-// (a local stack, or a testnet host other than the SDK's default).
+// (a local stack, or a testnet host other than the SDK's default). It goes
+// through `customNetwork` rather than the deprecated bare `baseUrl`, and is
+// declared `funds: "unknown"` because a URL alone cannot say what it moves.
 const baseUrl = process.env.NEXUS_EXCHANGE_API_URL;
 
 const client = new Client({
-  network: Network.Testnet,
+  network: baseUrl
+    ? customNetwork({ label: "custom", baseUrl, funds: "unknown" })
+    : Network.Testnet,
   apiKey,
   apiSecret,
-  ...(baseUrl ? { baseUrl } : {}),
 });
 
 try {
   // --- Public market data (no credentials needed) ----------------------------
 
-  const summaries = await client.fetchMarketSummaries();
+  const summaries = await client.fetchMarketsSummary();
   console.log(`${summaries.length} markets on testnet`);
 
   const first = summaries[0];
@@ -80,7 +84,7 @@ try {
     process.exit(0);
   }
 
-  const account = await client.getAccount();
+  const account = await client.fetchBalance();
   console.log(
     `\nAccount: equity=${account.equity} balance=${account.balance} ` +
       `positions=${account.positions.length}`,
@@ -97,7 +101,7 @@ try {
       `\nCouldn't reach the Exchange API at ${baseUrl ?? "the testnet default host"}.` +
         `\n  ${detail}` +
         "\n\nIf the default host isn't serving the API for you, point the example" +
-        "\nsomewhere else with NEXUS_EXCHANGE_API_URL=https://<host>/api/v1 npm start.",
+        "\nsomewhere else with NEXUS_EXCHANGE_API_URL=https://<host>/v1 npm start.",
     );
     process.exit(1);
   }
