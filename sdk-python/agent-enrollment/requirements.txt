@@ -24,36 +24,36 @@ httpx==0.28.1
 
 # --- nexus-exchange's tree ---------------------------------------------------
 annotated-types==0.8.0
-anyio==4.14.2
-bitarray==3.10.1
+anyio==4.15.1
+bitarray==3.11.0
 certifi==2026.7.22
 ckzg==2.1.8
 cytoolz==1.1.0
-eth-abi==6.0.0b1
-eth-account==0.13.7
+eth-abi==6.0.0
+eth-account==0.14.0
 eth-hash==0.8.0
-eth-keyfile==0.8.1
+eth-keyfile==0.10.0
 eth-keys==0.8.0
-eth-rlp==2.2.0
+eth-rlp==3.0.0
 eth-typing==6.0.0
 eth-utils==6.0.0
 h11==0.16.0
 hexbytes==2.0.0
 httpcore==1.0.9
-idna==3.19
-parsimonious==0.10.0
-pycryptodome==3.23.0
-pydantic==2.13.4
-pydantic-core==2.46.4
-regex==2026.7.19
-rlp==4.1.0
+idna==3.20
+parsimonious==0.11.0
+pycryptodome==3.24.0
+pydantic==2.13.5
+pydantic-core==2.49.0
+regex==2026.9.29
+rlp==5.0.0
 toolz==1.1.0
 typing-extensions==4.16.0
 typing-inspection==0.4.4
 
 # --- the typechecker CI runs, and its tree -----------------------------------
-mypy==2.3.1
-ast-serialize==0.11.2
-librt==0.15.0
+mypy==2.4.0
+ast-serialize==0.12.1
+librt==0.16.0
 mypy-extensions==1.1.0
 pathspec==1.1.1
