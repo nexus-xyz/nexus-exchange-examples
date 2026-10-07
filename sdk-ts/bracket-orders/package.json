@@ -14,8 +14,8 @@
     "@nexus-xyz/exchange-ts": "0.6.0"
   },
   "devDependencies": {
-    "@types/node": "26.1.2",
-    "tsx": "4.23.8",
+    "@types/node": "26.6.4",
+    "tsx": "4.23.15",
     "typescript": "7.0.2"
   }
 }
