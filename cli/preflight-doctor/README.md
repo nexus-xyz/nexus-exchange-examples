@@ -28,10 +28,10 @@ $ ./run.sh
 preflight-doctor  api.testnet.nexus.xyz  (testnet)
 ──────────────────────────────────────────────────────────────────────────────
 network     testnet — play funds
-rest base   https://api.testnet.nexus.xyz/indexer
+rest base   https://api.testnet.nexus.xyz/v1
   from      the testnet default
-  prefix    /indexer
-ws base     wss://api.testnet.nexus.xyz/indexer
+  prefix    /v1
+ws base     wss://api.testnet.nexus.xyz/v1
   from      the testnet default
 cli         nexus 0.4.0 (spec v0.8.1, nexus-exchange 0.9.1)
 request id  b4186f33a6bb6b69ab3c52c57d8ae7ba
@@ -46,7 +46,7 @@ PASS  cli         nexus 0.4.0, the pinned release
                   → nothing to do.
 PASS  dns         api.testnet.nexus.xyz resolves to 2 address(es): 104.21.73.174 172.67.146.161
                   → nothing to do.
-PASS  reach       https://api.testnet.nexus.xyz/indexer serves /markets/summary — HTTP 200 from the venue
+PASS  reach       https://api.testnet.nexus.xyz/v1 serves /markets/summary — HTTP 200 from the venue
                   → nothing to do. This base URL is correct.
 PASS  routing     authentication runs ahead of routing here: a path that does not exist
                   also answers HTTP 401
@@ -54,10 +54,12 @@ PASS  routing     authentication runs ahead of routing here: a path that does no
                     your path exists. Only a 404 means a wrong prefix.
 WARN  legacy      the legacy base https://exchange.nexus.xyz/api/exchange answers HTTP 500
                   — it proxies to a decommissioned service
-                  → this is the default every published SDK and the CLI still ship, so an
-                    unconfigured client is pointed at a dead host. Set
-                    NEXUS_EXCHANGE_API_URL=https://api.testnet.nexus.xyz/indexer, and
-                    NEXUS_BASE_URL=… for the CLI.
+                  → this is the default older SDKs and the CLI ship, so an unconfigured
+                    client is pointed at a dead host. Set
+                    NEXUS_EXCHANGE_API_URL=https://api.testnet.nexus.xyz/v1. For the CLI,
+                    NEXUS_BASE_URL is no fix: a CLI built on nexus-exchange 0.11.x or older
+                    appends /api/v1 paths to it. Use a CLI built on 0.12.0 or later, whose
+                    testnet default is this base.
 PASS  clock       this host's clock is within 2s of the venue's
                   → so a signed-request rejection is not clock skew. One cause eliminated.
 PASS  version     venue API 0.9.38, minimum supported 0.0.0
@@ -67,7 +69,7 @@ WARN  lag         the indexer is 12212s behind the engine (x-indexer-lag-ms: 122
 WARN  health      the venue reports status 'down' — degraded services: bots
                   → reachable but not healthy. This is the venue's own assessment of
                     itself, not a problem with your configuration.
-PASS  ws          wss://api.testnet.nexus.xyz/indexer — /stream upgraded (HTTP 101);
+PASS  ws          wss://api.testnet.nexus.xyz/v1 — /stream upgraded (HTTP 101);
                   /ws is served and token-gated (HTTP 401 with a valid sec-websocket-accept)
                   → a token-gated 401 here is the healthy answer for /ws.
 PASS  credentials the CLI authenticated against testnet and read your open orders
@@ -75,6 +77,11 @@ PASS  credentials the CLI authenticated against testnet and read your open order
 ──────────────────────────────────────────────────────────────────────────────
 10 passed, 3 warning(s), 0 failed, 0 skipped.
 ```
+
+That run predates the move to the `/v1` base. Its `rest base`, `prefix`,
+`ws base`, `reach`, `legacy` and `ws` lines were edited for `/v1` rather than
+re-captured; a run on 2026-10-07, without credentials or the CLI, printed them
+as shown.
 
 Every check produces a verdict **and a next step**. A check that can say "this
 is wrong" but not "so do this" generates support tickets rather than closing
@@ -192,12 +199,13 @@ The single most useful thing this tool does is separate *"I am asking the wrong
 URL"* from *"I reached the venue and it refused me"*. Two things make that
 harder than reading the status code, and both are counter-intuitive.
 
-**Authentication runs ahead of routing.** Under the `/indexer` prefix a path
-that does not exist answers `401`, exactly as a real authenticated path does:
+**Authentication runs ahead of routing.** Under the `/v1` prefix a path that
+does not exist answers `401`, exactly as a real authenticated path does
+(measured 2026-10-07):
 
 ```
-GET /indexer/account/summary            -> 401 {"code":"UNAUTHORIZED"}
-GET /indexer/definitely-not-a-real-path -> 401 {"code":"UNAUTHORIZED"}
+GET /v1/account/summary            -> 401 {"code":"UNAUTHORIZED"}
+GET /v1/definitely-not-a-real-path -> 401 {"code":"UNAUTHORIZED"}
 ```
 
 So a `401` proves your prefix is right and proves **nothing else**. It is not
@@ -219,40 +227,40 @@ is why the status code is the rule here and everything else is corroboration.
 ### The prefix is load-bearing
 
 ```
-https://api.testnet.nexus.xyz/indexer/markets/summary          -> 200
-https://api.testnet.nexus.xyz/indexer/api/v1/markets/summary   -> 200
-https://api.testnet.nexus.xyz/markets/summary                  -> 404
-https://api.testnet.nexus.xyz/                                 -> 404
+https://api.testnet.nexus.xyz/v1/markets/summary   -> 200
+https://api.testnet.nexus.xyz/markets/summary      -> 404
+https://api.testnet.nexus.xyz/                     -> 404
 ```
 
-The indexer is mounted under a `/indexer` path prefix on the shared per-env
-hostname and strips it before forwarding, so the app still sees bare spec
-paths. Drop it and you get a bare `404` with nothing to go on.
+The API is served under the spec's `/v1` base on the shared per-env hostname,
+and the edge strips the prefix before forwarding, so the indexer still sees bare
+spec paths. Drop it and you get a bare `404` with nothing to go on. (Measured
+2026-10-07.)
 
 ### The base your SDK ships is dead
 
-Every published SDK and the CLI still default to
-`https://exchange.nexus.xyz/api/exchange`. That host **500s on every route** —
-it proxies to a decommissioned service. So the doctor probes it on every run
-whatever network you selected, because a reader whose own base works can still
-have a broken client, and this is the check that says so.
+Older SDK releases, and CLI releases built on nexus-exchange 0.11.0 or older,
+default to `https://exchange.nexus.xyz/api/exchange`. That host **500s on every
+route**: it proxies to a decommissioned service. So the doctor probes it on
+every run whatever network you selected, because a reader whose own base works
+can still have a broken client, and this is the check that says so.
 
-That is also why this example accepts `NEXUS_EXCHANGE_API_URL`: until the SDKs
-cut over, an override is the only way to point an installed client at a host
-that answers.
+That is also why this example accepts `NEXUS_EXCHANGE_API_URL`: for a client on
+one of those releases, an override is the only way to point it at a host that
+answers.
 
 ### WebSocket needs its own check
 
 A correct REST base does not imply a working stream. The TypeScript SDK derived
-its WS URL from the bare *origin*, which drops the `/indexer` prefix — REST
+its WS URL from the bare *origin*, which dropped the route prefix; REST
 keeps working and the stream 404s on connect. Nothing in a REST check catches
 that, so the WS bases are probed separately:
 
 ```
-wss://api.testnet.nexus.xyz/indexer/stream -> 101 Switching Protocols
-wss://api.testnet.nexus.xyz/indexer/ws     -> 401, with a valid sec-websocket-accept
-wss://api.testnet.nexus.xyz/stream         -> 404
-wss://api.testnet.nexus.xyz/ws             -> 404
+wss://api.testnet.nexus.xyz/v1/stream -> 101 Switching Protocols
+wss://api.testnet.nexus.xyz/v1/ws     -> 401, with a valid sec-websocket-accept
+wss://api.testnet.nexus.xyz/stream    -> 404
+wss://api.testnet.nexus.xyz/ws        -> 404
 ```
 
 The `401` on `/ws` is the *healthy* answer: the `sec-websocket-accept` header

@@ -7,7 +7,7 @@
 //
 //  1. **The `x-ratelimit-*` headers ride every response, public ones
 //     included.** Measured on the live testnet: an unauthenticated `GET
-//     /api/v1/markets/BTC-USDX-PERP/funding` answers `200` with
+//     /markets/BTC-USDX-PERP/funding` answers `200` with
 //     `x-ratelimit-limit: 50` and `x-ratelimit-remaining: 49`. So this app
 //     starts at a deliberately slow assumed rate and *corrects upward* from
 //     the first response it gets, which costs nothing and beats hardcoding a

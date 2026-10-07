@@ -8,7 +8,7 @@ description = "Distance-to-liquidation and margin health for one Nexus Exchange 
 [dependencies]
 # Pinned exactly, not by range: a reader running this a year from now should get
 # the behaviour the README describes. See CONTRIBUTING § 3.
-nexus-exchange = "=0.11.0"
+nexus-exchange = "=0.12.0"
 # Held at the version the SDK's own lockfile resolves, so the `Decimal` this app
 # does arithmetic on is the same type the SDK deserializes into. A `^1` range
 # would unify anyway; the exact pin is what makes that visible.

@@ -18,13 +18,17 @@ book, then keeps it live — over the WebSocket when one is configured, otherwis
 by polling REST — and prints top of book whenever it moves.
 
 ```
-21:13:23  Nexus Exchange trading terminal — https://api.testnet.nexus.xyz/indexer (play funds)
+21:13:23  Nexus Exchange trading terminal — https://api.testnet.nexus.xyz/v1 (play funds)
 21:13:23  market: BTC-USDX-PERP
 21:13:23  tick=0.5 lot=0.001 size=[0.001, 100]
 21:13:23  BTC-USDX-PERP  bid 62821.5 × 0.001  ask 62881.0 × 0.05  mid 62851.0  spread 59.5  live
 21:13:26  BTC-USDX-PERP  bid 62820.0 × 0.001  ask 62879.5 × 0.05  mid 62849.5  spread 59.5  live
 21:13:30  shutting down (SIGINT)
 ```
+
+That transcript predates the move to the `/v1` base, and its first line was
+edited rather than re-captured. A read-only run against `/v1` on 2026-10-07
+printed that line as shown; the market was halted, so no top of book followed.
 
 With `--trade` it also places exactly one order — a `PostOnly` buy 2% below the
 mid, sized at the venue minimum — reports fills, and cancels it on exit.
@@ -80,8 +84,8 @@ npm start -- --trade
 | --- | --- | --- |
 | `NEXUS_EXCHANGE_API_KEY` | no | API key id. Without it, public market data only. |
 | `NEXUS_EXCHANGE_API_SECRET` | no | API secret (hex) paired with the key. |
-| `NEXUS_EXCHANGE_API_URL` | no | REST base. Defaults to `https://api.testnet.nexus.xyz/indexer`. Must **not** include `/api/v1` — see below. |
-| `NEXUS_EXCHANGE_WS_URL` | no | WebSocket endpoint. `wss://api.testnet.nexus.xyz/indexer/ws` for testnet. Unset ⇒ REST polling. |
+| `NEXUS_EXCHANGE_API_URL` | no | REST base. Defaults to `https://api.testnet.nexus.xyz/v1`. Must **not** end in `/api/v1`. See below. |
+| `NEXUS_EXCHANGE_WS_URL` | no | WebSocket endpoint. `wss://api.testnet.nexus.xyz/v1/ws` for testnet. Unset ⇒ REST polling. |
 | `NEXUS_EXCHANGE_FUNDS` | no | `play` \| `real` \| `unknown`. Only needed for a host this example does not recognise. |
 | `NEXUS_MARKET` | no | Market id. Defaults to `BTC-USDX-PERP`. |
 | `NEXUS_ORDER_DISTANCE_BPS` | no | How far below the mid `--trade` rests, in bps. Defaults to `200`. |
@@ -96,20 +100,20 @@ Three things about the current testnet deployment will cost you an afternoon if
 you discover them yourself. All three were measured against the live host, not
 inferred from the spec.
 
-**1. The API is under `/indexer`, not at the host root.**
+**1. The API is under `/v1`, not at the host root.**
 
-Measured 2026-09-09:
+Measured 2026-10-07:
 
 ```
-https://api.testnet.nexus.xyz/indexer/api/v1/markets/summary  → 200, JSON
-https://api.testnet.nexus.xyz/api/v1/markets/summary          → 404, text/plain
+https://api.testnet.nexus.xyz/v1/markets/summary  → 200, JSON
+https://api.testnet.nexus.xyz/markets/summary     → 404, text/plain
 ```
 
-The whole API — the `/api/v1` surface and the host-root routes alike — is
-mounted *under* that path prefix, which the deployment strips before forwarding.
-Point a client at the bare host and every call 404s. That is why
-`NEXUS_EXCHANGE_API_URL` defaults to the prefixed base, and why the app refuses
-a base URL ending in `/api/v1` rather than sending `/api/v1/api/v1/...`.
+`/v1` is the spec's REST base, and every path this app sends is a bare spec
+path under it (`/orders`, `/markets/summary`). The edge strips the prefix
+before forwarding. Point a client at the bare host and every call 404s. That is
+why `NEXUS_EXCHANGE_API_URL` defaults to the prefixed base, and why the app
+refuses a base URL ending in `/api/v1`, the old layout.
 
 The older `https://exchange.nexus.xyz/api/exchange` base that this example
 used to ship is **dead**: it proxies to a decommissioned indexer and returns
@@ -117,28 +121,26 @@ used to ship is **dead**: it proxies to a decommissioned indexer and returns
 
 **2. You sign the path the *indexer* sees, not the path in your URL.**
 
-The deployment strips the `/indexer` prefix before the request reaches the
-service that verifies your signature. So a request sent to
-`…/indexer/api/v1/orders` is verified as `/api/v1/orders`, and that — with the
-`/api/v1`, without the base's prefix — is what goes in the canonical string.
-Sign the URL's full path instead and you get a `401` that looks exactly like a
-bad secret. (Host-root routes such as `/ws/token` are signed bare, for the same
-reason: the prefix is never part of the signed path.)
+The edge strips the `/v1` prefix before the request reaches the service that
+verifies your signature. So a request sent to `…/v1/orders` is verified as
+`/orders`, and that, without the base's prefix, is what goes in the canonical
+string. Sign the URL's full path instead and you get a `401` that looks exactly
+like a bad secret.
 
 **3. The WebSocket origin is the same base, `wss://` — and it is reachable.**
 
-Set `NEXUS_EXCHANGE_WS_URL=wss://api.testnet.nexus.xyz/indexer/ws` and the
+Set `NEXUS_EXCHANGE_WS_URL=wss://api.testnet.nexus.xyz/v1/ws` and the
 streaming path lights up with no other change. Both ends are served from the one
 prefix, which matters: the upgrade token is minted over REST (`POST /ws/token`)
 and is scoped to the origin that issued it, so REST and WebSocket must be the
 same deployment.
 
-An HTTP/1.1 upgrade probe, measured 2026-09-09:
+An HTTP/1.1 upgrade probe, measured 2026-10-07:
 
 ```
-GET /indexer/ws      → 401, {"code":"ws_token_missing"}, with a valid
+GET /v1/ws           → 401, {"code":"ws_token_missing"}, with a valid
                         sec-websocket-accept header — served, token-gated
-GET /indexer/stream  → 101 Switching Protocols
+GET /v1/stream       → 101 Switching Protocols
 ```
 
 It is left unset by default so that the read-only dashboard still runs with no
@@ -254,8 +256,8 @@ the point it arises:
 
 - Runs against **testnet** (play funds). It is an example, not
   production-hardened code.
-- **Testnet serves a WebSocket origin** — `wss://api.testnet.nexus.xyz/indexer/ws`
-  — see "About the host" for the upgrade probe. What has *not* been run end to
+- **Testnet serves a WebSocket origin**, `wss://api.testnet.nexus.xyz/v1/ws`.
+  See "About the host" for the upgrade probe. What has *not* been run end to
   end here is an authenticated upgrade, which needs credentials this repo does
   not hold; the REST path, the token mint, the write path and every failure
   branch were run against the live host.

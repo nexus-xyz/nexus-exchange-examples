@@ -108,7 +108,7 @@ function decimalField(
 /** Parse `GET /markets/summary` into the rules this app validates against. */
 export function parseMarkets(raw: unknown): Map<string, MarketSpec> {
   if (!Array.isArray(raw)) {
-    throw new Error("GET /api/v1/markets/summary did not return a list");
+    throw new Error("GET /markets/summary did not return a list");
   }
   const markets = new Map<string, MarketSpec>();
   for (const item of raw) {
@@ -135,7 +135,7 @@ export function parseMarkets(raw: unknown): Map<string, MarketSpec> {
     });
   }
   if (markets.size === 0) {
-    throw new Error("GET /api/v1/markets/summary returned no usable markets");
+    throw new Error("GET /markets/summary returned no usable markets");
   }
   return markets;
 }

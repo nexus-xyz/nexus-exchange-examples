@@ -222,7 +222,7 @@ export class Trader {
     try {
       const response = await this.rest.request<{ order?: unknown }>({
         method: "POST",
-        path: "/api/v1/orders",
+        path: "/orders",
         body,
         signed: true,
         // Rule 1. Emphatically not idempotent.
@@ -344,7 +344,7 @@ export class Trader {
   private async fetchOpenOrders(): Promise<readonly Order[]> {
     const response = await this.rest.request<unknown>({
       method: "GET",
-      path: "/api/v1/orders",
+      path: "/orders",
       signed: true,
       idempotent: true,
     });
@@ -410,7 +410,7 @@ export class Trader {
   private async cancelOrder(id: string): Promise<void> {
     await this.rest.request({
       method: "DELETE",
-      path: `/api/v1/orders/${encodeURIComponent(id)}`,
+      path: `/orders/${encodeURIComponent(id)}`,
       // `market_id` is a required query parameter, and it is part of the signed
       // query string — not decoration.
       query: [["market_id", this.spec.marketId]],
@@ -423,7 +423,7 @@ export class Trader {
   private async cancelAllForMarket(): Promise<void> {
     await this.rest.request({
       method: "DELETE",
-      path: "/api/v1/orders",
+      path: "/orders",
       query: [["market_id", this.spec.marketId]],
       signed: true,
       idempotent: true,

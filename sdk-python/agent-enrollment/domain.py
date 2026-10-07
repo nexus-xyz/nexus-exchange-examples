@@ -32,7 +32,7 @@ against **Ethereum Mainnet** via the USDX bridge, not a Nexus L1 chain, so a
 Nexus L1 chain id is never the right answer there. Guessing it from the network
 name is exactly the reasoning this module exists to prevent.
 
-The SDK has no reader for ``/metadata`` in 0.4.0, so this is ~40 lines of
+The SDK has no reader for ``/metadata`` in 0.7.0, so this is ~40 lines of
 ``httpx`` -- the SDK's own transport, already in the pinned set -- rather than a
 new dependency or a reach into ``Client._request``.
 """
@@ -64,10 +64,10 @@ def metadata_url(base_url: str) -> str:
     """``/metadata`` on the same base every other request in this run uses.
 
     Taking the base as an argument rather than reading it back off the client is
-    not fussiness. ``nexus_exchange.Client`` does not expose the base it resolved,
-    and ``client.network.base_url`` is *not* it: construct
-    ``Client(Network.TESTNET, base_url=X)`` and the config still reports testnet's
-    own base while requests go to ``X``. An app that read the chain id from
+    not fussiness. ``client.network.base_url`` is *not* the base requests go to
+    (``client.base_url`` is, since 0.5.0, and the two are easy to confuse):
+    construct ``Client(Network.TESTNET, base_url=X)`` and the config still
+    reports testnet's own base while requests go to ``X``. An app that read the chain id from
     ``client.network.base_url`` and registered at ``X`` would be signing under one
     host's domain and delegating on another's -- silently, and only when an
     override was in play. So ``config.base_url`` is the single source and both

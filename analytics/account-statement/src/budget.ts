@@ -53,7 +53,7 @@ export const RESYNC_INTERVAL_MS = 5_000;
  *
  * `"headers"` is a real and useful case, not a degraded one: **the
  * `x-ratelimit-*` headers ride a `401` as well as a `2xx`.** Measured on the
- * live testnet deployment — an unsigned `GET /api/v1/account/rate-limit`
+ * live testnet deployment: an unsigned `GET /account/rate-limit`
  * answers `401 UNAUTHORIZED` and still carries `x-ratelimit-limit: 50` and
  * `x-ratelimit-remaining: 49`. So a caller whose credentials are wrong still
  * learns the ceiling it is being metered at, which is worth pacing against

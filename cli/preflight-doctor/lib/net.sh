@@ -113,10 +113,10 @@ header_value() {
 #
 # That is not obvious, and the two ways to get it wrong are both natural:
 #
-#   - "A 401 means my key is bad." Not necessarily. Under the `/indexer` prefix
+#   - "A 401 means my key is bad." Not necessarily. Under the `/v1` prefix
 #     authentication runs *ahead* of routing, so a path that does not exist at
-#     all answers 401 too. `/indexer/definitely-not-a-real-path` returns
-#     `{"code":"UNAUTHORIZED"}`, exactly as `/indexer/account/summary` does. A
+#     all answers 401 too. `/v1/definitely-not-a-real-path` returns
+#     `{"code":"UNAUTHORIZED"}`, exactly as `/v1/account/summary` does. A
 #     401 therefore proves the prefix is right and proves nothing else — it is
 #     not evidence that the path you asked for exists.
 #

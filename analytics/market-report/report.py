@@ -201,12 +201,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     # than producing an empty report that looks like a quiet market.
     try:
         # Three routes, because they disagree about which markets exist — see
-        # `merge_market_sources`. Note the first path: the market catalog is the
-        # one endpoint here that is *not* under /api/v1.
+        # `merge_market_sources`.
         catalog_payload = api.get_json("/markets")
-        summaries_payload = api.get_json("/api/v1/markets/summary")
-        tickers_payload = api.get_json("/api/v1/tickers")
-        stats_payload = api.get_json("/api/v1/stats")
+        summaries_payload = api.get_json("/markets/summary")
+        tickers_payload = api.get_json("/tickers")
+        stats_payload = api.get_json("/stats")
     except ApiError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EX_HOST
@@ -224,9 +223,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     # the activity chart, so a failure here is a note rather than an exit.
     fill_history: list[int] = []
     try:
-        history_payload = api.get_json("/api/v1/stats/history")
+        history_payload = api.get_json("/stats/history")
     except ApiError as exc:
-        print(f"warning: /api/v1/stats/history unavailable ({exc})", file=sys.stderr)
+        print(f"warning: /stats/history unavailable ({exc})", file=sys.stderr)
     else:
         history_step = max(1, window_ms // FILL_HISTORY_BUCKETS)
         fill_history = bucket_fill_history(
@@ -256,11 +255,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         snapshot = snapshots[market]
         try:
             candles_payload = api.get_json(
-                f"/api/v1/markets/{market}/candles",
+                f"/markets/{market}/candles",
                 {"timeframe": timeframe, "limit": str(limit)},
             )
             funding_payload = api.get_json(
-                f"/api/v1/markets/{market}/funding",
+                f"/markets/{market}/funding",
                 {"limit": str(_funding_limit(window_ms))},
             )
         except ApiError as exc:

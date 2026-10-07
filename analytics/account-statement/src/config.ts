@@ -25,7 +25,7 @@ export interface Credentials {
 }
 
 export interface Config {
-  /** Deployment base URL. Paths like `/api/v1/fills` are appended to it. */
+  /** Deployment base URL. Paths like `/fills` are appended to it. */
   readonly baseUrl: string;
   readonly credentials: Credentials | null;
   readonly funds: Funds;
@@ -61,17 +61,16 @@ export const WINDOW_SPEC: Readonly<
 };
 
 /**
- * The durable testnet deployment.
+ * The testnet REST base, the spec's `/v1`.
  *
  * **Not** `https://exchange.nexus.xyz/api/exchange`, which every Nexus SDK
  * shipped as its default until 2026-09 and which now answers `500` on every
- * route — it proxies to a decommissioned indexer (ENG-14039). The `/indexer`
- * suffix here is a route prefix the deployment mounts the service under, not
- * part of the API contract, and it is load-bearing: the bare host answers
- * `404` on every path. Copy the base whole rather than trimming it to the
- * hostname.
+ * route: it proxies to a decommissioned indexer (ENG-14039). Every path this
+ * app sends is a bare spec path under `/v1` (`/fills`), and the bare host
+ * answers `404` on every path. Copy the base whole rather than trimming it to
+ * the hostname.
  */
-const DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/indexer";
+const DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/v1";
 
 /** The one deployment this example knows the funds posture of. */
 const KNOWN_PLAY_HOST = "api.testnet.nexus.xyz";
@@ -150,9 +149,10 @@ function isLoopback(hostname: string): boolean {
  *     `Authorization` header you did not write.
  *   * **query or fragment** on a *base* would be silently dropped when a path
  *     is appended — the operator's intent lost with no error.
- *   * **a base already ending in `/api/v1`** doubles the prefix, because every
- *     path in this app carries it. That produces a `404` and, worse, a
- *     signature over a path the server never sees.
+ *   * **a base already ending in `/api/v1`** is the old layout. The app signs
+ *     the bare path it appends (`/fills`), so `/api/v1` would be sent but not
+ *     signed, and the server would verify `/api/v1/fills` against a
+ *     signature over `/fills`: a `401` that looks like a bad secret.
  *   * **the mainnet host**, because this is a testnet example.
  */
 function parseBaseUrl(raw: string): string {
@@ -186,9 +186,9 @@ function parseBaseUrl(raw: string): string {
   const normalised = `${url.origin}${url.pathname}`.replace(/\/+$/, "");
   if (normalised.endsWith("/api/v1")) {
     throw new Error(
-      "NEXUS_EXCHANGE_API_URL must not end in /api/v1 — this app appends the " +
-        "full /api/v1/... path itself, so a base carrying it would send (and " +
-        "sign) /api/v1/api/v1/...",
+      "NEXUS_EXCHANGE_API_URL must not end in /api/v1: this app appends and " +
+        "signs the spec's bare paths (/fills), so /api/v1 in the base would be " +
+        "sent but not signed. Use the /v1 base, e.g. " + DEFAULT_BASE_URL,
     );
   }
   return normalised;

@@ -18,29 +18,23 @@ import os
 from dataclasses import dataclass
 from typing import Mapping
 
-from nexus_exchange import Funds, NetworkConfig
+from nexus_exchange import Funds, Network, NetworkConfig
 
 from snapshot import SnapshotClient
 
-#: Testnet's durable REST base — play funds, no real-world value.
+#: Testnet's REST base (play funds, no real-world value), read from
+#: ``Network.TESTNET`` rather than spelled out here. In 0.7.0 that is
+#: ``https://api.testnet.nexus.xyz/v1``, the spec's base, and every call the
+#: adapter and the typed client make is a bare spec path under it (`/markets`,
+#: `/tickers`). SDK releases before 0.6.0 pointed it at the decommissioned
+#: ``exchange.nexus.xyz/api/exchange`` gateway, which is why this file used to
+#: name a base of its own.
 #:
-#: Not ``Network.TESTNET``, and the difference is load-bearing. The SDK's own
-#: testnet descriptor resolves to ``https://exchange.nexus.xyz/api/exchange``,
-#: which is a **decommissioned** gateway: measured on 2026-09-18, every route
-#: under it answers `500` with an HTML error page — `/markets`, `/api/v1/tickers`
-#: and `health_check` alike. Passing ``Network.TESTNET`` here would therefore
-#: produce an example that cannot run, on a host the SDK still calls the default.
-#: The rest of this catalog moved to the same base for the same reason
-#: (`exchange-api/trading-terminal`, ENG-14959; `analytics/market-report`).
-#:
-#: The ``/indexer`` prefix is part of the base, not decoration. The whole API —
-#: the `/api/v1` surface and the host-root `/markets` route alike — is mounted
-#: under it, and `https://api.testnet.nexus.xyz/api/v1/...` is a 404.
-DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/indexer"
-
-#: Label for the built-in target. A :class:`NetworkConfig` label is a *key* — it
-#: namespaces stored credentials — so it is spelled out rather than derived.
-TESTNET_LABEL = "testnet-indexer"
+#: Typed ``str | None`` by the SDK because mainnet's base is not published yet;
+#: testnet's always is, and the assertion says so where it is relied on.
+_TESTNET_BASE = Network.TESTNET.base_url
+assert _TESTNET_BASE is not None
+DEFAULT_BASE_URL: str = _TESTNET_BASE
 
 #: Label for a `NEXUS_EXCHANGE_API_URL` target, named after the variable it came
 #: from so a reader of the banner can tell where the target was chosen. The same
@@ -81,17 +75,17 @@ class Target:
     def network(self) -> NetworkConfig:
         """The described target to hand the SDK — never a bare ``base_url=``.
 
-        Passing ``base_url=`` on its own routes requests correctly and then
-        reports the wrong thing about them: the client keeps whatever network
-        descriptor it was given, so it goes on claiming `funds=PLAY` for a host
-        the caller supplied. It is also the deprecated selector (ENG-10955).
-        Spelling the config out makes the funds classification something this
-        app *states* rather than something it inherits.
-
-        ``direct_base_url`` is left to fall back to ``base_url``, which is what
-        a single override has always meant; a deployment that keeps a
-        gateway/direct split is the case that has to name both.
+        The default is the SDK's own testnet descriptor, unchanged. An override
+        is spelled out: passing ``base_url=`` on its own routes requests
+        correctly and then reports the wrong thing about them, because the
+        client keeps whatever network descriptor it was given, so it goes on
+        claiming `funds=PLAY` for a host the caller supplied. It is also the
+        deprecated selector (ENG-10955). Spelling the config out makes the funds
+        classification something this app *states* rather than something it
+        inherits.
         """
+        if not self.overridden:
+            return Network.TESTNET.config
         return NetworkConfig.custom(
             label=self.label, funds=self.funds, base_url=self.base_url
         )
@@ -158,20 +152,20 @@ def resolve(flag: str | None = None, env: Mapping[str, str] | None = None) -> Ta
         value = environ.get(BASE_URL_ENV, "").strip()
         raw, source = (value or None), ENV_SOURCE
     if raw is None:
-        return Target(DEFAULT_BASE_URL, TESTNET_LABEL, Funds.PLAY, DEFAULT_SOURCE)
+        return Target(DEFAULT_BASE_URL, Network.TESTNET.label, Funds.PLAY, DEFAULT_SOURCE)
 
     base = raw.strip().rstrip("/")
     if not base:
         raise TargetError(f"{source} was given as an empty value — omit it or give a URL")
-    # The SDK appends `/api/v1` to every direct-service route itself, so a base
-    # that already ends in it produces `/api/v1/api/v1/markets/...` — which 404s
-    # exactly like a missing endpoint and sends you looking in the wrong place.
-    # The SDK's own `_clean_base_url` checks the scheme, the host, userinfo and
-    # a stray query, but not this, so it is checked here.
+    # The SDK appends the spec's bare paths (`/markets`, `/tickers`), which
+    # belong under the `/v1` base. A base ending in `/api/v1` is the old layout,
+    # and the spec has no `/api/v1/markets` for `load_markets` to land on. The
+    # SDK's own `_clean_base_url` checks the scheme, the host, userinfo and a
+    # stray query, but not this, so it is checked here.
     if base.endswith("/api/v1"):
         raise TargetError(
-            f"base URL must not end in /api/v1 (got {base!r}): the SDK appends it, "
-            f"so this would request /api/v1/api/v1/... and 404. Pass the "
+            f"base URL must not end in /api/v1 (got {base!r}): the SDK appends "
+            f"the spec's bare paths, which belong under the /v1 base. Pass the "
             f"deployment base, e.g. {DEFAULT_BASE_URL}"
         )
 

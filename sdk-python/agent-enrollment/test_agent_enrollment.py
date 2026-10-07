@@ -8,8 +8,9 @@ decisions that matter live — above all the refusals, which are the behaviour t
 example exists to demonstrate and therefore the behaviour a version bump must not
 be able to quietly remove.
 
-The EIP-712 digest is pinned by a **known answer**. The domain and the struct
-hash are computed here from the spec text, independently of the SDK, and the
+The EIP-712 digest is pinned by a **known answer**. The domain (salted with the
+network's name) and the struct hash are computed here from the spec text,
+independently of the SDK, and the
 signature the SDK produces is recovered back to the signing address. A test that
 only checked "the SDK returned 65 bytes" would pass against a signer that used
 the wrong domain, which is the single failure this example is about.
@@ -33,6 +34,8 @@ import unittest.mock
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
+from nexus_exchange import Network
+
 import config
 import domain
 import enroll
@@ -54,6 +57,9 @@ from config import ConfigError, HelpRequested
 # example itself reads every key it actually uses from the environment.
 WALLET_KEY = "0x" + "11" * 32
 AGENT_KEY = "0x" + "22" * 32
+
+#: The network `plan` salts the registration with when testnet is named.
+TESTNET = Network.TESTNET.config
 
 
 def metadata(chain_id: object = 11155111) -> dict[str, Any]:
@@ -125,26 +131,31 @@ class ChainIdRules(unittest.TestCase):
 
     def test_metadata_url_hangs_off_the_configured_base(self) -> None:
         self.assertEqual(
-            domain.metadata_url("https://host.example/indexer"),
-            "https://host.example/indexer/metadata",
+            domain.metadata_url("https://host.example/v1"),
+            "https://host.example/v1/metadata",
         )
         self.assertEqual(
-            domain.metadata_url("https://host.example/indexer/"),
-            "https://host.example/indexer/metadata",
+            domain.metadata_url("https://host.example/v1/"),
+            "https://host.example/v1/metadata",
         )
 
 
 class Eip712KnownAnswer(unittest.TestCase):
     """The signed bytes, recomputed from the spec rather than from the SDK."""
 
-    def digest(self, agent: str, expires_at: int, nonce: int, chain_id: int) -> bytes:
+    def digest(
+        self, agent: str, expires_at: int, nonce: int, chain_id: int, network: str = "testnet"
+    ) -> bytes:
         from eth_utils.crypto import keccak
 
+        # Since 0.7.0 the domain carries `salt = keccak256(network name)`, which
+        # the server verifies with no unsalted fallback.
         domain_separator = keccak(
-            keccak(text="EIP712Domain(string name,string version,uint256 chainId)")
+            keccak(text="EIP712Domain(string name,string version,uint256 chainId,bytes32 salt)")
             + keccak(text="Nexus Exchange")
             + keccak(text="1")
             + chain_id.to_bytes(32, "big")
+            + keccak(text=network)
         )
         hash_struct = keccak(
             keccak(text="RegisterAgent(address agent,uint64 expiresAt,uint64 nonce)")
@@ -181,7 +192,11 @@ class Eip712KnownAnswer(unittest.TestCase):
         wallet = EthSigner.from_hex(WALLET_KEY)
         agent = EthSigner.from_hex(AGENT_KEY)
         registration = wallet.register_agent(
-            agent=agent.address, expires_at_ms=1_800_000_000_000, nonce=7, chain_id=11155111
+            agent=agent.address,
+            expires_at_ms=1_800_000_000_000,
+            nonce=7,
+            chain_id=11155111,
+            network=Network.TESTNET,
         )
         recovered = self.recover(
             self.digest(agent.address, 1_800_000_000_000, 7, 11155111),
@@ -201,7 +216,11 @@ class Eip712KnownAnswer(unittest.TestCase):
         wallet = EthSigner.from_hex(WALLET_KEY)
         agent = EthSigner.from_hex(AGENT_KEY)
         registration = wallet.register_agent(
-            agent=agent.address, expires_at_ms=1_800_000_000_000, nonce=7, chain_id=11155111
+            agent=agent.address,
+            expires_at_ms=1_800_000_000_000,
+            nonce=7,
+            chain_id=11155111,
+            network=Network.TESTNET,
         )
         elsewhere = self.recover(
             self.digest(agent.address, 1_800_000_000_000, 7, 1),
@@ -223,7 +242,11 @@ class Eip712KnownAnswer(unittest.TestCase):
         agent = EthSigner.from_hex(AGENT_KEY)
         one, other = (
             wallet.register_agent(
-                agent=agent.address, expires_at_ms=1_800_000_000_000, nonce=7, chain_id=cid
+                agent=agent.address,
+                expires_at_ms=1_800_000_000_000,
+                nonce=7,
+                chain_id=cid,
+                network=Network.TESTNET,
             )
             for cid in (11155111, 1)
         )
@@ -241,6 +264,7 @@ class Eip712KnownAnswer(unittest.TestCase):
                     expires_at_ms=1_800_000_000_000,
                     nonce=7,
                     chain_id=bad,  # type: ignore[arg-type]
+                    network=Network.TESTNET,
                 )
 
     def test_the_registration_body_omits_nothing_the_endpoint_needs(self) -> None:
@@ -253,6 +277,7 @@ class Eip712KnownAnswer(unittest.TestCase):
             nonce=7,
             chain_id=11155111,
             label="agent-enrollment-example",
+            network=Network.TESTNET,
         ).to_dict()
         self.assertEqual(
             sorted(body),
@@ -383,13 +408,15 @@ class PlanRules(unittest.TestCase):
     def test_a_wallet_delegating_to_itself_is_refused(self) -> None:
         with unittest.mock.patch.object(enroll, "read_chain_id", return_value=11155111):
             with self.assertRaises(ConfigError) as caught:
-                enroll.plan(self.cfg(agent_private_key=WALLET_KEY), 1_700_000_000_000)
+                enroll.plan(
+                    self.cfg(agent_private_key=WALLET_KEY), TESTNET, 1_700_000_000_000
+                )
         self.assertIn("same key", str(caught.exception))
 
     def test_the_expiry_is_the_ttl_and_the_nonce_is_now(self) -> None:
         now = 1_700_000_000_000
         with unittest.mock.patch.object(enroll, "read_chain_id", return_value=11155111):
-            ready = enroll.plan(self.cfg(ttl_days=3), now)
+            ready = enroll.plan(self.cfg(ttl_days=3), TESTNET, now)
         self.assertEqual(ready.registration.nonce, now)
         self.assertEqual(
             ready.registration.expires_at, now + 3 * enroll.MILLISECONDS_PER_DAY
@@ -409,19 +436,33 @@ class PlanRules(unittest.TestCase):
 
         with unittest.mock.patch.object(enroll, "read_chain_id", unavailable):
             with self.assertRaises(enroll.Fatal) as caught:
-                enroll.plan(self.cfg(wallet_private_key="zz" * 32), 1_700_000_000_000)
+                enroll.plan(
+                    self.cfg(wallet_private_key="zz" * 32), TESTNET, 1_700_000_000_000
+                )
         self.assertEqual(caught.exception.code, enroll.EX_UNAVAILABLE)
         self.assertIn("Refusing to sign", caught.exception.detail)
 
+    def test_a_target_that_names_no_network_is_refused_before_signing(self) -> None:
+        """An override has no `RegisterAgent` salt, so nothing is signed for it."""
+        from nexus_exchange import Funds, NetworkConfig
+
+        override = NetworkConfig.custom(
+            label=enroll.OVERRIDE_LABEL, funds=Funds.UNKNOWN, base_url="http://127.0.0.1:1"
+        )
+        with unittest.mock.patch.object(enroll, "read_chain_id", return_value=11155111):
+            with self.assertRaises(ConfigError) as caught:
+                enroll.plan(self.cfg(base_url_overridden=True), override, 1_700_000_000_000)
+        self.assertIn("names none", str(caught.exception))
+
     def test_a_generated_agent_key_is_not_the_wallet(self) -> None:
         with unittest.mock.patch.object(enroll, "read_chain_id", return_value=11155111):
-            ready = enroll.plan(self.cfg(agent_private_key=None), 1_700_000_000_000)
+            ready = enroll.plan(self.cfg(agent_private_key=None), TESTNET, 1_700_000_000_000)
         self.assertTrue(ready.agent_key_is_ephemeral)
         self.assertNotEqual(ready.agent.address, ready.wallet.address)
 
     def test_the_reported_plan_never_prints_the_signature(self) -> None:
         with unittest.mock.patch.object(enroll, "read_chain_id", return_value=11155111):
-            ready = enroll.plan(self.cfg(), 1_700_000_000_000)
+            ready = enroll.plan(self.cfg(), TESTNET, 1_700_000_000_000)
         lines: list[str] = []
         with unittest.mock.patch.object(enroll, "log", lines.append):
             enroll.report_plan(self.cfg(), ready)
@@ -560,7 +601,7 @@ class LoopbackBoundary(unittest.TestCase):
             label="agent-enrollment-example",
             dry_run=True,
         )
-        ready = enroll.plan(loaded, 1_700_000_000_000)
+        ready = enroll.plan(loaded, Network.TESTNET.config, 1_700_000_000_000)
         self.assertEqual(ready.chain_id, 11155111)
 
     def test_naming_testnet_keeps_play_funds_while_the_override_does_not(self) -> None:

@@ -21,11 +21,10 @@
 //     verifies against nothing.
 //
 //  2. **`<path>` is the path the *indexer* verifies, not the path in your
-//     URL.** The testnet deployment mounts the service under a `/indexer` route
-//     prefix and strips it before the request reaches the code that checks the
-//     signature, so a request sent to
-//     `https://api.testnet.nexus.xyz/indexer/api/v1/orders/batch` is verified as
-//     `/api/v1/orders/batch`. Sign what the indexer sees. `rest.ts` derives the
+//     URL.** The testnet edge strips the base's `/v1` route prefix before the
+//     request reaches the code that checks the signature, so a request sent to
+//     `https://api.testnet.nexus.xyz/v1/orders/batch` is verified as
+//     `/orders/batch`. Sign what the indexer sees, as the SDKs do. `rest.ts` derives the
 //     signed path and the sent URL from one value each, so they cannot drift.
 //
 //  3. **`<query>` must be the exact bytes on the wire.** Percent-encoding is

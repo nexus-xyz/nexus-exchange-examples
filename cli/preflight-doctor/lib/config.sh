@@ -29,7 +29,13 @@ readonly LEGACY_BASE_URL="https://exchange.nexus.xyz/api/exchange"
 # `legacy` check's advice must point here whatever network is selected: on
 # mainnet, `DEFAULT_REST_BASE` is a host with no DNS, and telling a reader to
 # set their base URL to an undeployed host is worse advice than none.
-readonly DURABLE_TESTNET_BASE="https://api.testnet.nexus.xyz/indexer"
+readonly DURABLE_TESTNET_BASE="https://api.testnet.nexus.xyz/v1"
+
+# What the `legacy` check tells a CLI user, in one place. NEXUS_BASE_URL is no
+# fix there: a CLI built on nexus-exchange 0.11.x or older appends `/api/v1/...`
+# to whatever base it is given, so pointing it at `/v1` composes `/v1/api/v1/...`,
+# a layout the spec does not have. The `/v1` base needs a CLI built on 0.12.0.
+readonly CLI_BASE_NOTE="For the CLI, NEXUS_BASE_URL is no fix: a CLI built on nexus-exchange 0.11.x or older appends /api/v1 paths to it. Use a CLI built on 0.12.0 or later, whose testnet default is this base."
 
 # A path the venue serves without credentials. Everything the transport checks
 # conclude is concluded from this one path, so it has to be public: a probe of
@@ -61,17 +67,16 @@ resolve_network() {
 
   case $DOCTOR_NETWORK in
     testnet)
-      DEFAULT_REST_BASE="https://api.testnet.nexus.xyz/indexer"
-      DEFAULT_WS_BASE="wss://api.testnet.nexus.xyz/indexer"
+      DEFAULT_REST_BASE="https://api.testnet.nexus.xyz/v1"
+      DEFAULT_WS_BASE="wss://api.testnet.nexus.xyz/v1"
       NETWORK_FUNDS="play funds"
       ;;
     mainnet)
-      # The host, and deliberately no path prefix. Every other environment
-      # mounts the API under `/indexer`, so the convention would predict
-      # `https://api.nexus.xyz/indexer` — but the host resolves to no address,
-      # so nothing has ever confirmed it and this tool does not guess. The DNS
-      # check fails first and the report says the prefix is unverified rather
-      # than inventing one.
+      # The host, and deliberately no path prefix. Testnet serves the API under
+      # `/v1`, so the convention would predict `https://api.nexus.xyz/v1`, but
+      # the host resolves to no address, so nothing has ever confirmed it and
+      # this tool does not guess. The DNS check fails first and the report says
+      # the prefix is unverified rather than inventing one.
       DEFAULT_REST_BASE="https://api.nexus.xyz"
       DEFAULT_WS_BASE="wss://api.nexus.xyz"
       NETWORK_FUNDS="REAL FUNDS"

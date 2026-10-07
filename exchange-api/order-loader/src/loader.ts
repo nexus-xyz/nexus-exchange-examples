@@ -135,7 +135,7 @@ export class Loader {
     this.touchedMarkets.add(order.marketId);
     const raw = await this.rest.request<unknown>({
       method: "POST",
-      path: "/api/v1/orders/preview",
+      path: "/orders/preview",
       body: toOrderRequest(order),
       signed: true,
       // A preview creates nothing, so repeating it is harmless.
@@ -216,7 +216,7 @@ export class Loader {
     try {
       raw = await this.rest.request<unknown>({
         method: "POST",
-        path: "/api/v1/orders/batch",
+        path: "/orders/batch",
         body: group.map(toOrderRequest),
         signed: true,
         // Emphatically not retried on an ambiguous failure — see the header
@@ -314,7 +314,7 @@ export class Loader {
     try {
       raw = await this.rest.request<unknown>({
         method: "GET",
-        path: "/api/v1/orders",
+        path: "/orders",
         signed: true,
         idempotent: true,
         bucket: "request",
@@ -386,7 +386,7 @@ export class Loader {
       try {
         const raw = await this.rest.request<unknown>({
           method: "DELETE",
-          path: "/api/v1/orders",
+          path: "/orders",
           query: [["market_id", market]],
           signed: true,
           // Cancelling twice is harmless, and this is the request that must not
@@ -420,7 +420,7 @@ export class Loader {
     try {
       raw = await this.rest.request<unknown>({
         method: "GET",
-        path: "/api/v1/orders",
+        path: "/orders",
         signed: true,
         idempotent: true,
         bucket: "request",

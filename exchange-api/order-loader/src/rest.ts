@@ -96,7 +96,7 @@ export class MissingCredentialsError extends Error {
 export interface RequestOptions {
   readonly method: "GET" | "POST" | "DELETE" | "PATCH" | "PUT";
   /**
-   * The indexer-visible path, e.g. `/api/v1/orders/batch`. This is both
+   * The indexer-visible path, e.g. `/orders/batch`. This is both
    * appended to the base URL and signed — one value, so the two cannot
    * disagree.
    */
@@ -173,11 +173,11 @@ function parseBucketLabel(value: unknown): WireBucket | null {
  * The trailing-slash strip is the whole of the subtlety. A base with **no**
  * path prefix — a loopback venue on `http://127.0.0.1:9090`, or the bare
  * testnet host — has `pathname === "/"`, and concatenating that with a `path`
- * that already starts with `/` yields `//api/v1/...`, which never equals what
+ * that already starts with `/` yields `//orders/...`, which never equals what
  * the URL parser produces. The guard would then fire on every single request
  * and the app could not talk to that deployment at all. It escapes notice
- * against `https://api.testnet.nexus.xyz/indexer`, where `.pathname` is
- * `/indexer` and the concatenation happens to come out right — which is
+ * against `https://api.testnet.nexus.xyz/v1`, where `.pathname` is `/v1` and
+ * the concatenation happens to come out right, which is
  * exactly why it is worth a test rather than a second reading.
  */
 export function wirePath(baseUrl: string, path: string): string {
@@ -508,7 +508,7 @@ export class RestClient {
     } else if (status === 404 && !contentType.includes("json")) {
       hint =
         " — the base URL may not be serving the API. The testnet base is " +
-        "https://api.testnet.nexus.xyz/indexer, prefix included; the bare " +
+        "https://api.testnet.nexus.xyz/v1, prefix included; the bare " +
         "host 404s on every path.";
     }
 

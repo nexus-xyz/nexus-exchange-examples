@@ -8,9 +8,9 @@
 // bare `401` that looks exactly like a bad secret.
 //
 // The bug: composing it as `new URL(base).pathname + path` yields
-// `//api/v1/...` for a base with no path prefix, since that `pathname` is `/`
+// `//orders/...` for a base with no path prefix, since that `pathname` is `/`
 // and `path` already starts with one. Against
-// `https://api.testnet.nexus.xyz/indexer` the prefix is `/indexer` and the
+// `https://api.testnet.nexus.xyz/v1` the prefix is `/v1` and the
 // concatenation comes out right, so it looked correct; against a loopback
 // venue or the bare host it fired on every single request.
 //
@@ -23,11 +23,11 @@ import { test } from "node:test";
 
 import { wirePath } from "./rest.js";
 
-const PATHS = ["/api/v1/orders/batch", "/api/v1/account/rate-limit", "/ws/token"];
+const PATHS = ["/orders/batch", "/account/rate-limit", "/ws/token"];
 
 const BASES: ReadonlyArray<readonly [string, string]> = [
   // The deployment this example targets: a base that carries a route prefix.
-  ["https://api.testnet.nexus.xyz/indexer", "/indexer"],
+  ["https://api.testnet.nexus.xyz/v1", "/v1"],
   // The regression case. No path prefix at all, so `pathname` is `/`.
   ["http://127.0.0.1:9090", ""],
   // The bare testnet host — same shape, and the one a reader most easily

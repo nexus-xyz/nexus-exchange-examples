@@ -26,9 +26,10 @@ private name is not usually somewhere an example should reach, and this is the
 exception that proves the rule: interposing anywhere higher would miss one of the
 three, and interposing lower would mean owning the HTTP client.
 
-**Reads only, and unsigned only.** A cache that replayed a signed or non-``GET``
-request would be a correctness bug in any app that grew one, so the guard is
-here rather than in a comment. This example never issues either.
+**Reads only, and unauthenticated only.** A cache that replayed a signed,
+bearer-authenticated or non-``GET`` request would be a correctness bug in any
+app that grew one, so the guard is here rather than in a comment. This example
+never issues any of them.
 """
 
 from __future__ import annotations
@@ -39,10 +40,9 @@ import httpx
 from nexus_exchange import Client, NetworkConfig
 
 #: What makes two reads "the same read": the verb, the route, and the query
-#: string, plus whether the request went to the direct ``/api/v1`` surface or
-#: the gateway base — the same path means different things under each, so the
-#: flag is part of the identity rather than an afterthought.
-Key = tuple[str, str, str, bool]
+#: string. Every route is a bare spec path under one base, so nothing else
+#: tells two reads apart.
+Key = tuple[str, str, str]
 
 
 class SnapshotClient(Client):
@@ -74,7 +74,7 @@ class SnapshotClient(Client):
         query: str = "",
         body: Any | None = None,
         signed: bool = False,
-        direct: bool = False,
+        bearer: str | None = None,
     ) -> httpx.Response:
         """One read, from the venue the first time and from memory after that.
 
@@ -86,16 +86,16 @@ class SnapshotClient(Client):
         A failed read is not stored: the exception propagates and the next caller
         tries again, which is what a caller of a client expects.
         """
-        cacheable = method == "GET" and not signed and body is None
+        cacheable = method == "GET" and not signed and bearer is None and body is None
         if cacheable:
-            key: Key = (method, path, query, direct)
+            key: Key = (method, path, query)
             cached = self._snapshot.get(key)
             if cached is not None:
                 self.replayed += 1
                 return cached
 
         response = super()._send(
-            method, path, query=query, body=body, signed=signed, direct=direct
+            method, path, query=query, body=body, signed=signed, bearer=bearer
         )
         if cacheable:
             self._snapshot[key] = response
