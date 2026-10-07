@@ -68,16 +68,16 @@ take the signal; the cancel does not. A second Ctrl-C exits at once and says wha
 that can cost.
 
 "Not interruptible" is only an acceptable trade if the wait is a number you can
-state, and `timeoutMs` is *not* that number — it bounds one **attempt**. The SDK
-retries transient failures on every method in its `IDEMPOTENT_METHODS` set, and
-`DELETE` is one of them, so the cancel retries exactly like a read: on the SDK's
-defaults that is three attempts and the panic button can sit there for ~46s, not
-~15s. So this app sets the retry policy instead of inheriting it — one retry, a
-5s per-attempt timeout — and derives `MAX_CALL_MS` (~10s) from those two
-constants in `src/index.ts` rather than asserting a number that can drift. One
-honest caveat, stated in the code too: on a `429` the SDK honours the server's
-`Retry-After` instead of its own backoff, clamped to 60s, so a rate-limited
-cancel is bounded by the server rather than by this app.
+state. Since 0.6.0 the SDK never auto-retries a write, so the cancel is one
+attempt and the 5s per-attempt `timeoutMs` bounds it. A cancel that fails is
+re-sent on the next tick, and only if that tick's fresh read still shows a breach
+and resting orders. Reads are still retried, so this app sets that policy instead
+of inheriting it (one retry, a 5s per-attempt timeout) and derives `MAX_CALL_MS`
+(~10s) for a read from those two constants in `src/index.ts` rather than
+asserting a number that can drift. One honest caveat, stated in the code too: on
+a `429` the SDK honours the server's `Retry-After` on a read instead of its own
+backoff, clamped to 60s, so a rate-limited read is bounded by the server rather
+than by this app.
 
 Beyond that there is no concurrency to get wrong, by design: the loop is strictly
 sequential — fetch, evaluate, act, sleep — so a tick cannot overlap the previous
@@ -157,20 +157,24 @@ what the target moves — the descriptor carries `funds` along with the transpor
 so no guardrail can read a play-funds classification off a client pointed
 somewhere else. An overridden target is `funds: "unknown"`, and the app says so
 on its first line rather than printing "play funds" at a host nobody declared.
-That value is the deployment base (e.g. `https://<host>/api/exchange`); the
-client adds the `/api/v1` prefix itself.
+That value is the REST base the spec's paths hang off (the testnet default is
+`https://api.testnet.nexus.xyz/v1`); the client refuses one ending in the old
+`/api/v1` layout.
 
 ## Pinned versions
 
-Pinned to **`@nexus-xyz/exchange-ts` 0.3.0**, exact version, with
+Pinned to **`@nexus-xyz/exchange-ts` 0.6.0**, exact version, with
 `package-lock.json` committed.
 
-> 0.3.0 matters specifically: 0.2.0 could not reach the live deployment at all —
-> it sent `/api/v1` to the host root, which serves the marketing frontend, and
-> refused the gateway base that answers. 0.3.0 split the deployment base from the
-> signed path ([`nexus-exchange-ts#65`](https://github.com/nexus-xyz/nexus-exchange-ts/pull/65))
-> and fixed it. There is no configuration of 0.2.0 that works, so do not pin
-> this example back.
+0.6.0 stopped auto-retrying writes: `cancelAllOrders` surfaces its first
+transient failure instead of re-sending it. The guard already re-reads before it
+re-sends, because a failed cancel is tried again on the next tick only if that
+tick's fresh read still shows a breach and resting orders. Reads are still
+retried by the SDK.
+
+Do not pin this example back to 0.5.0 or earlier: 0.5.0's testnet base is the
+`/indexer` prefix, which is being discontinued, 0.3.0 and 0.4.0 point at a
+legacy host, and 0.2.0 could not reach the live deployment at all.
 
 ## Notes
 
