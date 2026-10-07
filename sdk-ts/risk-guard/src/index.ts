@@ -35,10 +35,10 @@
 // that made things worse.
 //
 // "Not interruptible" is only an acceptable trade if the wait is a number you
-// can state, and `timeoutMs` alone is not that number: it bounds one *attempt*,
-// and the SDK retries transient failures on idempotent methods — `DELETE` among
-// them, so the cancel retries too. See `MAX_CALL_MS` for the bound, which is
-// derived from the retry settings this app sets rather than asserted.
+// can state. Since 0.6.0 the SDK never auto-retries a write, so the cancel is
+// one attempt and `timeoutMs` bounds it; a failed cancel is re-sent on the next
+// tick, after a fresh read shows orders still resting. See `MAX_CALL_MS` for
+// the bound on the reads, which the SDK still retries.
 
 import {
   ApiError,
@@ -65,13 +65,11 @@ const REQUEST_TIMEOUT_MS = 5_000;
 /**
  * Retries after the first attempt, set explicitly rather than inherited.
  *
- * The SDK's default is 2, and it applies retries to every method in its
- * `IDEMPOTENT_METHODS` set — which includes `DELETE`, so `cancelAllOrders` is
- * retried like a read. That is correct of the SDK (a cancel-all is idempotent)
- * but it means the panic button's stuck time is a multiple of `timeoutMs`, not
- * `timeoutMs`. One retry is the trade this app wants: the reads are polled again
- * next tick anyway, so they lose little, while the cancel still survives a
- * single transient blip without being able to sit there for three attempts.
+ * The SDK's default is 2. Since 0.6.0 it applies them to reads only: a write,
+ * `cancelAllOrders` included, surfaces its first transient failure instead of
+ * re-sending, so a lost response can never re-run it. One retry is the trade
+ * this app wants for the reads: they are polled again next tick anyway, so a
+ * second or third attempt buys little.
  */
 const MAX_RETRIES = 1;
 
@@ -79,7 +77,8 @@ const MAX_RETRIES = 1;
 const RETRY_BASE_MS = 250;
 
 /**
- * Worst case for one call, and so the longest a shutdown waits on one.
+ * Worst case for one read, and so the longest a shutdown waits on one. The
+ * cancel is a single attempt and is bounded by `REQUEST_TIMEOUT_MS` alone.
  *
  * Every attempt times out, and every backoff is taken at its ceiling: the SDK
  * sleeps `min(maxDelay, base·2ⁿ)` plus jitter of up to the same again, capped at
@@ -89,7 +88,7 @@ const RETRY_BASE_MS = 250;
  *
  * One caveat worth stating rather than hiding: on a `429` the SDK honours the
  * server's `Retry-After` instead of its own backoff, clamped to 60s. A
- * rate-limited cancel can therefore exceed this bound — bounded still, but by
+ * rate-limited read can therefore exceed this bound — bounded still, but by
  * the server. Everything else is bounded here.
  */
 const MAX_CALL_MS =
@@ -297,8 +296,8 @@ async function main(): Promise<void> {
       // Fetched together: two round trips of skew is less than doing them back
       // to back, and the orders do not feed any limit anyway.
       const [account, orders] = await Promise.all([
-        client.getAccount({ signal: stopping.signal }),
-        client.getOpenOrders({ signal: stopping.signal }),
+        client.fetchBalance({ signal: stopping.signal }),
+        client.fetchOpenOrders({ signal: stopping.signal }),
       ]);
 
       const verdict = evaluate(
@@ -370,7 +369,8 @@ async function onBreach(
   }
   try {
     // No `signal`: this is the risk-reducing action, and Ctrl-C must not be what
-    // stops it. `MAX_CALL_MS` is what bounds it instead.
+    // stops it. `REQUEST_TIMEOUT_MS` is what bounds it instead: the SDK sends a
+    // write once and never retries it.
     await client.cancelAllOrders();
     // Deliberately not "cancelled N": `cancelAllOrders` is the account-wide
     // `DELETE /orders` and it runs *after* the fetch above, so an order placed
@@ -424,9 +424,9 @@ try {
     console.error(
       `\nCouldn't reach the Exchange API.\n  ${describe(error)}\n\n` +
         "If the default host isn't serving the API for you, point the example at\n" +
-        "another deployment. That value is the deployment *base* — the client adds\n" +
-        "the /api/v1 prefix itself, and refuses a base that already carries it:\n\n" +
-        "  NEXUS_EXCHANGE_API_URL=https://<host>/api/exchange npm start",
+        "another deployment. That value is the REST base the spec's paths hang off,\n" +
+        "and the client refuses one ending in the old /api/v1 layout:\n\n" +
+        "  NEXUS_EXCHANGE_API_URL=https://<host>/v1 npm start",
     );
     process.exit(1);
   }

@@ -2,9 +2,10 @@
 //
 // Why this file exists at all
 // ---------------------------
-// The Nexus Exchange MCP server exposes 63 tools, and 16 of them move money or
-// change account settings — `place_order`, `amend_order`, `deposit_collateral`,
-// `claim_credit`, `submit_deposit`, `set_tier`. That is the right surface for a
+// The Nexus Exchange MCP server exposes 67 tools (114 counting the deprecated
+// aliases 0.4.0 keeps for one minor), and 21 of them move money or change
+// account settings, such as `create_order`, `edit_order`, `deposit`,
+// `claim_credit`, `create_deposit` and `add_margin`. That is the right surface for a
 // general-purpose agent. It is emphatically not the surface a *risk review*
 // needs, which is three read calls.
 //
@@ -47,9 +48,9 @@ import type { Config } from "./config.js";
  * blast radius should be an edit to this list and a line in review.
  */
 export const ALLOWED_TOOLS = [
-  "get_balance",
-  "get_positions",
-  "get_open_orders",
+  "fetch_balance",
+  "fetch_positions",
+  "fetch_open_orders",
 ] as const;
 
 export type AllowedTool = (typeof ALLOWED_TOOLS)[number];
@@ -57,7 +58,7 @@ export type AllowedTool = (typeof ALLOWED_TOOLS)[number];
 /**
  * Label for a `NEXUS_EXCHANGE_API_URL` target.
  *
- * Required by the server since 0.3.0 and given no default there, because the
+ * Required by the server for a custom target and given no default there, because the
  * label names the stage in diagnostics and is what sibling clients key stored
  * credentials on. Named after the variable it came from rather than something
  * invented, so a log line says where the target was chosen.
@@ -65,7 +66,7 @@ export type AllowedTool = (typeof ALLOWED_TOOLS)[number];
 const OVERRIDE_LABEL = "api-url-override";
 
 /** Tool-name prefixes that only ever read. Used to describe what we skipped. */
-const READ_ONLY_PREFIXES = ["get_", "list_", "preview_"];
+const READ_ONLY_PREFIXES = ["fetch_", "get_", "list_", "preview_"];
 
 /**
  * Collapse a tool's error detail to one bounded line.
@@ -101,7 +102,7 @@ export class Session {
    * Spawn the server, handshake, and verify the tool contract before use.
    *
    * The contract check is not ceremony. Tool names and shapes are runtime
-   * strings from another process; a server that renamed `get_positions` would
+   * strings from another process; a server that renamed `fetch_positions` would
    * otherwise fail deep inside the review, with an error about the wrong thing.
    */
   static async open(config: Config): Promise<Session> {
@@ -115,9 +116,9 @@ export class Session {
         NEXUS_EXCHANGE_API_KEY: config.apiKey,
         NEXUS_EXCHANGE_API_SECRET: config.apiSecret,
         NEXUS_EXCHANGE_NETWORK: config.network,
-        // An override is a *declared* target, not a bare URL. Since 0.3.0 the
-        // server requires a label and a funds classification alongside
-        // `custom`, and refuses rather than defaulting either — for the same
+        // An override is a *declared* target, not a bare URL. The server
+        // requires a label and a funds classification alongside `custom`, and
+        // refuses rather than defaulting either — for the same
         // reason its Rust and TypeScript siblings require them: assuming "play"
         // would make every money guardrail lie in the direction that costs
         // money, and a URL on its own cannot say whose money is behind it.
@@ -125,13 +126,19 @@ export class Session {
         // `unknown` is the honest answer here and it costs nothing, because
         // this review only reads. Passing the URL *without* naming the network
         // would also work — the server treats that as label `custom`, funds
-        // `unknown` — but that form is deprecated in 0.3.0 and prints a notice,
-        // and it is the wrong lesson to teach: describe the target.
+        // `unknown` — but that form is deprecated and prints a notice, and it
+        // is the wrong lesson to teach: describe the target.
+        //
+        // `NEXUS_EXCHANGE_GATEWAY_PATH=/` says the URL is the REST base the
+        // spec's paths hang off (`https://<host>/v1`, or a bare indexer's
+        // origin), the shape testnet itself has in 0.4.0. Left unset, the
+        // server would append the retired `/api/exchange` gateway prefix.
         ...(config.baseUrl
           ? {
               NEXUS_EXCHANGE_API_URL: config.baseUrl,
               NEXUS_EXCHANGE_NETWORK_LABEL: OVERRIDE_LABEL,
               NEXUS_EXCHANGE_FUNDS: "unknown",
+              NEXUS_EXCHANGE_GATEWAY_PATH: "/",
             }
           : {}),
       },

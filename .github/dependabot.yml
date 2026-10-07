@@ -15,33 +15,80 @@ updates:
           - minor
           - patch
 
-  # The copy-to-start TS stub. It's the manifest every TypeScript example is
-  # copied from, so a stale pin here propagates into every example someone
-  # starts after it goes stale.
+  # Every example's own manifest, one block per ecosystem. Examples pin their
+  # SDK/CLI version exactly (a reader should get the behaviour the README
+  # describes), so these bumps are what keeps each example on the latest SDK
+  # release (ENG-20356). Each block's group puts every update across its
+  # directories in one weekly PR, reviewed like any other change to the examples
+  # it touches; CI builds every example, so a breaking SDK release shows up red
+  # on that PR.
+  #
+  # When an example lands, add its directory to the block for its manifest
+  # (`<track>/<example-name>/`, per CONTRIBUTING.md). An example left out of these
+  # lists is never bumped, and nothing else will tell you.
+  #
+  # `cli/*` examples pin the `nexus` CLI as a constant in their shell scripts,
+  # which no ecosystem here reads, so they are bumped by hand. That includes
+  # `cli/quote-ladder`, which must stay on its pinned CLI until one built on
+  # nexus-exchange-rs 0.13.0 ships: 0.12.0 drops the client order id its
+  # idempotency relies on (ENG-20051).
+
+  # Node: the TypeScript SDK, MCP and raw-API examples, and the copy-to-start TS
+  # stub. The stub matters most: every TypeScript example is copied from it, so
+  # a stale pin there propagates into every example someone starts after.
   - package-ecosystem: npm
-    directory: "/_template/stub-ts"
+    directories:
+      - "/_template/stub-ts"
+      - "/analytics/account-statement"
+      - "/analytics/funding-carry"
+      - "/exchange-api/book-replica"
+      - "/exchange-api/order-loader"
+      - "/exchange-api/trading-terminal"
+      - "/sdk-mcp/risk-review"
+      - "/sdk-ts/bracket-orders"
+      - "/sdk-ts/dead-mans-switch"
+      - "/sdk-ts/risk-guard"
+      - "/sdk-ts/twap-executor"
     schedule:
       interval: weekly
     commit-message:
-      prefix: "deps(stub-ts)"
+      prefix: "deps(npm)"
     groups:
-      npm-minor:
-        update-types: [minor, patch]
+      npm:
+        patterns: ["*"]
 
-  # Per-example manifests are registered here as examples land. Examples pin
-  # their SDK/CLI version deliberately (a reader should get the same behaviour
-  # the README describes), so Dependabot is scoped to each example's directory
-  # and its bumps are reviewed like any other change to that example.
-  #
-  # Add one block per example, using the example's real path —
-  # `<track>/<example-name>/`, per CONTRIBUTING.md:
-  #
-  # - package-ecosystem: npm
-  #   directory: "/sdk-ts/trading-dashboard"
-  #   schedule:
-  #     interval: weekly
-  #   commit-message:
-  #     prefix: "deps(trading-dashboard)"
-  #   groups:
-  #     npm-minor:
-  #       update-types: [minor, patch]
+  - package-ecosystem: cargo
+    directories:
+      - "/sdk-rust/latency-probe"
+      - "/sdk-rust/liquidation-watch"
+      - "/sdk-rust/risk-guard"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(cargo)"
+    groups:
+      cargo:
+        patterns: ["*"]
+    ignore:
+      # nexus-exchange 0.12.0 cannot decode the Market rows the venue serves
+      # (ENG-19677) and drops the client order id (ENG-20051), both of which
+      # `sdk-rust/latency-probe` depends on, so it stays on 0.11.0. 0.13.0 fixes
+      # both; delete this rule once every example is past 0.12.
+      - dependency-name: "nexus-exchange"
+        versions: ["0.12.x"]
+
+  # `requirements.txt` with every version pinned by `==` is the lockfile here
+  # (CONTRIBUTING § 3), so Dependabot bumps the SDK and its pinned tree alike.
+  - package-ecosystem: pip
+    directories:
+      - "/analytics/market-report"
+      - "/sdk-python/agent-enrollment"
+      - "/sdk-python/ccxt-port"
+      - "/sdk-python/risk-guard"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(pip)"
+    groups:
+      pip:
+        patterns: ["*"]

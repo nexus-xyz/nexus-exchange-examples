@@ -79,6 +79,11 @@ This example pins **`nexus-exchange` 0.11.0** (the Rust SDK). It also pins
 to. The pins are exact `=`, and `Cargo.lock` is committed. It targets the
 Exchange API on **testnet**.
 
+It stays on 0.11.0 until `nexus-exchange` 0.13.0 is published. 0.12.0 cannot
+decode the `Market` rows this probe reads (ENG-19677), and it sends the order's
+client id under a name the engine ignores (ENG-20051), which the cleanup relies
+on to find an order whose place response was lost. 0.13.0 fixes both.
+
 ## Setup
 
 ```bash

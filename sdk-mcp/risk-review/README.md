@@ -11,8 +11,8 @@ rather than a typed SDK. It is read-only: it reports, and changes nothing.
 
 ```text
 risk-review on the testnet deployment (play funds)
-tool surface: 63 tools offered, 16 of them mutating — this review uses 3,
-all read-only (get_balance, get_positions, get_open_orders)
+tool surface: 114 tools offered, 27 of them mutating — this review uses 3,
+all read-only (fetch_balance, fetch_positions, fetch_open_orders)
 
 positions: 2    resting orders: 3
 ok max-notional: notional 812.40 vs limit 1000
@@ -27,9 +27,11 @@ BREACHED — at least one limit is over.
 
 With an SDK, an app can only call the functions someone wrote into it. With MCP,
 the app — or the model driving it — can call **anything the server offers**, and
-this server offers 63 tools, 16 of which move money or change account settings:
-`place_order`, `amend_order`, `deposit_collateral`, `claim_credit`,
-`submit_deposit`, `set_tier`.
+this server offers 67 tools, 21 of which move money or change account settings:
+`create_order`, `edit_order`, `deposit`, `claim_credit`, `create_deposit`,
+`add_margin`. 0.4.0 also keeps 47 deprecated aliases of them registered for one
+minor (`place_order` for `create_order`, `get_balance` for `fetch_balance`), so
+the surface the review reports is 114 tools, 27 of them mutating.
 
 So the interesting engineering in an MCP app is not "how do I call a tool", which
 is one line. It is **how do I bound what may be called at all**.
@@ -49,7 +51,7 @@ the name in the message rather than deep inside the run.
 gives it every secret in your shell — cloud tokens, other exchanges' keys — for
 no reason. Only the variables the server documents are forwarded, and
 `NEXUS_EXCHANGE_ENABLE_ADMIN_TOOLS` is conspicuously never set, which is why the
-server registers 63 tools rather than its full 66: unset means the operator-only
+server registers 114 tools rather than its full 118: unset means the operator-only
 tools do not exist on the surface at all, which is stronger than not calling them.
 
 **Reap the child.** A stdio MCP server is a real subprocess. Every exit path —
@@ -103,14 +105,16 @@ default, and the review's first line says which target and what its funds are, s
 nobody has to guess whose money is being read.
 
 `NEXUS_EXCHANGE_API_URL` points the server at another deployment. Pass the
-**deployment base** (`https://<host>/api/exchange` on a gatewayed host, or a bare
-origin for an indexer serving at its root); the server composes both REST
-surfaces under it and adds `/api/v1` itself.
+**REST base** the spec's paths hang off: `https://<host>/v1` on a public-shaped
+host (testnet's own is `https://api.testnet.nexus.xyz/v1`), or a bare origin for
+an indexer serving at its root. Since 0.4.0 the server sends every request to
+that base with the spec's bare path (`/account`, `/orders`). This app declares
+that shape with `NEXUS_EXCHANGE_GATEWAY_PATH=/`; without it the server would
+append the retired `/api/exchange` gateway prefix.
 
-That last sentence is the whole reason this example needs
-`@nexus-xyz/exchange-mcp` **0.3.0 or newer**, and it is worth knowing if you
-build on an older pin. Through 0.2.0 the server composed `/api/v1/*` against the
-bare host root, which on the public deployment serves the marketing frontend:
+How the server composes its base has bitten this example before. Through 0.2.0
+the server composed `/api/v1/*` against the bare host root, which on the public
+deployment serves the marketing frontend:
 
 ```
 GET https://exchange.nexus.xyz/api/v1/account               -> 404 text/html        (Next.js frontend)
@@ -120,7 +124,7 @@ GET https://exchange.nexus.xyz/api/exchange/api/v1/account  -> 401 application/j
 Every authenticated tool — including the three this review uses — was therefore
 unreachable, while the 28 gateway-surface tools composed correctly and worked.
 That split is what made it survive: `get_service_status` answered while
-`get_balance` returned a web page.
+`get_balance` returned a web page (both since renamed).
 [nexus-exchange-mcp#69](https://github.com/nexus-xyz/nexus-exchange-mcp/pull/69)
 fixed it by hanging **both** surfaces off one deployment base — the base names
 the deployment, the path names the surface — the same model
@@ -162,7 +166,7 @@ by it.
 | --- | --- | --- |
 | `NEXUS_EXCHANGE_API_KEY` | yes | Testnet API key |
 | `NEXUS_EXCHANGE_API_SECRET` | yes | Paired secret, 32-byte hex |
-| `NEXUS_EXCHANGE_API_URL` | no | Point the server at another deployment — the deployment base, not the `/api/v1` path ([details](#which-deployment-it-talks-to)) |
+| `NEXUS_EXCHANGE_API_URL` | no | Point the server at another deployment: the REST base, e.g. `https://<host>/v1` ([details](#which-deployment-it-talks-to)) |
 | `NEXUS_GUARD_MAX_NOTIONAL` | one of these | Cap on total position notional |
 | `NEXUS_GUARD_MAX_LOSS` | one of these | Cap on total unrealized loss, as a positive number |
 | `NEXUS_GUARD_MIN_AVAILABLE_MARGIN` | one of these | Floor on available margin |
@@ -173,25 +177,32 @@ rather than guessed at.
 
 ## Pinned versions
 
-Pinned to **`@nexus-xyz/exchange-mcp` 0.3.0** and
+Pinned to **`@nexus-xyz/exchange-mcp` 0.4.0** and
 **`@modelcontextprotocol/sdk` 1.30.0**, exact versions with `package-lock.json`
 committed.
 
-0.3.0 is a floor, not just a pin: on 0.2.0 every authenticated tool this review
-calls returned the marketing site's 404 rather than data. Do not pin this example
-back — see [Which deployment it talks to](#which-deployment-it-talks-to).
+0.4.0 renamed the tools to `snake_case(operationId)`, so this review calls
+`fetch_balance`, `fetch_positions` and `fetch_open_orders`. The old `get_*` names
+still work as deprecated aliases for one minor, and this app does not use them.
+0.4.0 also moved every request onto the `/v1` base with the spec's bare paths.
+
+Do not pin this example back: on 0.2.0 every authenticated tool this review
+calls returned the marketing site's 404 rather than data, and 0.3.x does not
+offer the `fetch_*` names. See
+[Which deployment it talks to](#which-deployment-it-talks-to).
 
 ## Notes
 
 - It is an example, not production-hardened code. It reviews one account, keeps
   no state between runs, and has no alerting beyond stdout and the exit code.
 - **Not verified: a signed call with real credentials.** The routing is
-  confirmed — unauthenticated, `…/api/exchange/api/v1/account` answers `401`
-  `application/json`, where 0.2.0 got a `404` HTML page from the marketing app —
-  but confirming that a *valid* HMAC is accepted needs testnet keys, which this
-  example was written without. It is worth stating rather than implying, because
-  an invalid signature is answered by an edge proxy with an HTML `403`, and at
-  that layer a rejected signature and a routing fault look identical. The
+  confirmed (unauthenticated, `https://api.testnet.nexus.xyz/v1/account`
+  answers `401` `application/json`, re-checked for 0.4.0, where 0.2.0 got a
+  `404` HTML page from the marketing app), but confirming that a *valid* HMAC is
+  accepted needs testnet keys, which this example was written without. It is
+  worth stating rather than implying, because an invalid signature is answered
+  by an edge proxy with an HTML `403`, and at that layer a rejected signature
+  and a routing fault look identical. The
   upstream fix shipped with the same caveat.
 - Money is never a float. Values arrive as decimal strings and are parsed by
   `src/decimal.ts` onto `BigInt`; a limit check is a comparison against a sum,
@@ -200,6 +211,6 @@ back — see [Which deployment it talks to](#which-deployment-it-talks-to).
   failed read is never allowed to read as "no exposure". `unknown` is also not a
   licence to stop reasoning — a partial notional sum is a lower bound, so a bound
   already over the limit reports `breached`, not `unknown`.
-- The tool counts in this README (63 offered, 16 mutating) are prose, not
+- The tool counts in this README (114 offered, 27 mutating) are prose, not
   assertions in code, so a server release that adds a tool makes them stale
   silently. They are re-checked on every version bump.

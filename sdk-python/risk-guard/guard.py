@@ -64,9 +64,10 @@ from risk import State
 
 #: Per-request ceiling, and the whole bound on one call.
 #:
-#: `nexus_exchange` 0.4.0 does not retry: `Client._request` sends once and
-#: decodes, so unlike SDKs with a retry layer there is no attempt-vs-call
-#: distinction to get wrong here. This is simply how long one request may take.
+#: `nexus_exchange` 0.7.0 retries only when a client opts in with `retry=`, and
+#: then only GETs. This app does not opt in, so every request is one attempt and
+#: there is no attempt-vs-call distinction to get wrong here. This is simply how
+#: long one request may take.
 #:
 #: Deliberately tighter than the SDK's own 30s default, because the shutdown
 #: bound below is derived from it and that is the number an operator feels.
@@ -132,25 +133,6 @@ def one_line(value: object, limit: int = 200) -> str:
     return f"{flat[:limit]}…" if len(flat) > limit else flat
 
 
-def is_transient(error: NexusExchangeError) -> bool:
-    """Whether retrying the same request could succeed.
-
-    Mostly the SDK's own `transient` flag -- with one correction that matters.
-    `ApiError.transient` is `status >= 500 or status == 408`, so a **429 is
-    reported terminal**, and a guard that stops on terminal errors would shut
-    itself down the first time it got rate limited. A rate limit is the textbook
-    retryable failure: the same request succeeds once the budget refills. So 429
-    is treated as transient here regardless of what the flag says.
-
-    Deliberately a small, named exception rather than a blanket "retry
-    everything": the whole value of the distinction is that a revoked credential
-    still stops the guard.
-    """
-    if isinstance(error, ApiError) and error.status == 429:
-        return True
-    return error.transient
-
-
 def classify(error: NexusExchangeError) -> Fatal | None:
     """`Fatal` when this error will fail identically forever, else `None`.
 
@@ -161,7 +143,9 @@ def classify(error: NexusExchangeError) -> Fatal | None:
     operator is told the account is now unwatched. Same rule as `UNKNOWN` in
     `risk.py`: never let a failure read as a clean bill of health.
     """
-    if is_transient(error):
+    # Since SDK 0.6.0 `transient` covers 429 as well as 5xx and 408, so a
+    # rate-limited poll is retried next tick rather than stopping the guard.
+    if error.transient:
         return None
     auth = isinstance(error, (AuthError, MissingCredentialsError)) or (
         isinstance(error, ApiError) and error.status in (401, 403)
@@ -237,9 +221,8 @@ def build_client(config: Config) -> Client:
     URL on its own says nothing about whose money is behind it and this app only
     reads and cancels -- neither is funds-guarded. ``has_faucet`` stays ``False``
     for the same reason: a faucet is a property of the deployment, and this app
-    has not been told. ``direct_base_url`` is left to fall back to ``base_url``,
-    which is what a single override has always meant; a deployment that keeps the
-    gateway/direct split is the case that has to name both.
+    has not been told. Since 0.7.0 one ``base_url`` carries every request, so the
+    override is the whole target.
     """
     if config.base_url is None:
         return Client(

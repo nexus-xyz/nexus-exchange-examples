@@ -12,7 +12,7 @@
 // ------------------------------------------------------------
 // With an SDK, an app can only call the functions someone wrote into it. With
 // MCP, the app — or the model driving it — can call anything the server offers,
-// and this server offers 63 tools, 16 of which move money. The interesting
+// and this server offers 67 tools, 21 of which move money. The interesting
 // engineering is therefore not "how do I call a tool", which is one line, but
 // **how do I bound what may be called at all**.
 //
@@ -110,15 +110,15 @@ function asObject(payload: unknown, where: string): Record<string, unknown> {
 function toPosition(row: Record<string, unknown>): PositionView {
   const notional = optionalDecimal(row, "notional_value");
   return {
-    marketId: requireString(row, "market_id", "get_positions"),
+    marketId: requireString(row, "market_id", "fetch_positions"),
     // Required, not optional, and deliberately so: `size` is what lets the
     // review prove a flat position contributes zero notional even when its mark
     // price is missing. Reading it as absent would quietly turn that proof off,
     // so a payload without it fails loudly instead.
-    size: requireString(row, "size", "get_positions"),
+    size: requireString(row, "size", "fetch_positions"),
     notional: notional.value,
     notionalError: notional.error,
-    unrealizedPnl: requireString(row, "unrealized_pnl", "get_positions"),
+    unrealizedPnl: requireString(row, "unrealized_pnl", "fetch_positions"),
   };
 }
 
@@ -132,16 +132,16 @@ async function review(session: Session, config: Config): Promise<boolean> {
   // Sequential, not `Promise.all`: a stdio MCP server is one process behind one
   // pipe, so overlapping calls buy nothing here and make a failure harder to
   // attribute to the tool that caused it.
-  const balance = asObject(await session.call("get_balance"), "get_balance");
-  const positions = asArray(await session.call("get_positions"), "get_positions").map(
+  const balance = asObject(await session.call("fetch_balance"), "fetch_balance");
+  const positions = asArray(await session.call("fetch_positions"), "fetch_positions").map(
     toPosition,
   );
-  const orders = asArray(await session.call("get_open_orders"), "get_open_orders");
+  const orders = asArray(await session.call("fetch_open_orders"), "fetch_open_orders");
 
   const verdict = evaluate(
     {
       positions,
-      availableMargin: requireString(balance, "available_margin", "get_balance"),
+      availableMargin: requireString(balance, "available_margin", "fetch_balance"),
     },
     config.limits,
   );

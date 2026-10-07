@@ -59,7 +59,9 @@ the README describes, not a silently-upgraded SDK and a broken app.
 `requirements.txt` with every dependency pinned by `==`. A pin on your direct
 dependency isn't reproducible on its own: without a lockfile the transitive tree
 still floats. It's also what gives Dependabot something to bump per example, and
-those bumps are reviewed like any other change. CI installs from the lockfile
+those bumps are reviewed like any other change. Add your example's directory to
+its ecosystem's list in [`.github/dependabot.yml`](./.github/dependabot.yml), or
+nothing will bump it. CI installs from the lockfile
 (`npm ci`, `cargo build --locked`, `pip install -r requirements.txt`), so a
 missing one fails the build.
 
