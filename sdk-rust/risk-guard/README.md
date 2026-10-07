@@ -6,7 +6,7 @@ It polls your account, checks it against limits you set, and — when armed —
 cancels every resting order the moment a limit is breached.
 
 ```text
-risk-guard on https://exchange.nexus.xyz/api/exchange (play funds)
+risk-guard on https://api.testnet.nexus.xyz/v1 (play funds)
 limits: max-notional, max-loss — polling every 15s
 --arm: a breach will cancel every resting order on this account
 ok  max-notional=within max-loss=within  resting=2
@@ -93,7 +93,7 @@ being cancelled.
 ## Prerequisites
 
 - Rust 1.86+ (stable). Built and tested on 1.95.
-  > `nexus-exchange` 0.9.1 declares `rust-version = "1.86"`, and the committed
+  > `nexus-exchange` 0.12.0 declares `rust-version = "1.86"`, and the committed
   > `Cargo.lock` is lockfile v4, so anything older fails `cargo build --locked`
   > outright rather than degrading.
 - Testnet API credentials, created in the [Exchange app](https://exchange.nexus.xyz).
@@ -149,8 +149,11 @@ guard fires.
 
 **Testnet — play funds.** `Network::Testnet` is named explicitly in
 `src/main.rs` rather than left to the default, so nobody has to guess whose money
-this watches. Selecting `Network::Mainnet` is rejected by the SDK locally, before
-any bytes leave the process, so this app does not re-implement that guard badly.
+this watches. In SDK 0.12.0 its base is the spec's
+`https://api.testnet.nexus.xyz/v1`, with every request a bare spec path under it
+(`/account`, `/orders`). Selecting `Network::Mainnet` is rejected by the SDK
+locally, before any bytes leave the process, so this app does not re-implement
+that guard badly.
 
 Passing `NEXUS_EXCHANGE_API_URL` builds a `Network::Custom` with
 `Funds::Unknown`, because a bare URL cannot declare what the target moves.
@@ -171,10 +174,15 @@ the reader who needed the escape hatch.
 
 ## Pinned versions
 
-This example is pinned to **`nexus-exchange` 0.9.1** (the Rust SDK), with
-`rust_decimal` 1.38.0 and `tokio` 1.48.0. Exact `=` pins, and `Cargo.lock` is
-committed, so a reader a year from now gets the behaviour this README describes
-rather than a silently-upgraded SDK.
+This example is pinned to **`nexus-exchange` 0.12.0** (the Rust SDK), with
+`rust_decimal` 1.42.1 and `tokio` 1.53.1, each held at the version the SDK itself
+resolves. Exact `=` pins, and `Cargo.lock` is committed, so a reader a year from
+now gets the behaviour this README describes rather than a silently-upgraded SDK.
+
+0.12.0 has two known wire bugs, fixed in 0.13.0: it cannot decode the `Market`
+rows the venue serves (ENG-19677), and it sends an order's client id under a name
+the engine ignores (ENG-20051). This app reads no `Market` and sets
+no client id, so neither reaches it.
 
 ## Notes
 

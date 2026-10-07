@@ -314,7 +314,7 @@ async fn on_breach(
     // Not wrapped in `select!`: see the cancellation hazard in the module docs.
     match client.cancel_all_orders().await {
         // Deliberately not "cancelled N": `cancel_all_orders` is the
-        // account-wide `DELETE /api/v1/orders`, and it runs *after* the fetch
+        // account-wide `DELETE /orders`, and it runs *after* the fetch
         // above, so an order placed in between is cancelled too. The count is
         // what this app saw, and the audit line for its only write says exactly
         // that rather than implying a total the app cannot know. The response
