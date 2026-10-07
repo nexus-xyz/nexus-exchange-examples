@@ -38,20 +38,20 @@ hexbytes==2.0.0
 httpcore==1.0.9
 httpx==0.28.1
 idna==3.20
-parsimonious==0.10.0
+parsimonious==0.11.0
 py-ecc==8.0.0
-pycryptodome==3.23.0
+pycryptodome==3.24.0
 pydantic==2.13.5
-pydantic-core==2.46.5
-regex==2026.9.10
+pydantic-core==2.49.0
+regex==2026.9.29
 rlp==5.0.0
 toolz==1.1.0
 typing-extensions==4.16.0
 typing-inspection==0.4.4
 
 # --- the typechecker CI runs, and its tree -----------------------------------
-mypy==2.3.1
-ast-serialize==0.11.2
-librt==0.15.0
+mypy==2.4.0
+ast-serialize==0.12.1
+librt==0.16.0
 mypy-extensions==1.1.0
 pathspec==1.1.1
