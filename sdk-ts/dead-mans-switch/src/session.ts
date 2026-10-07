@@ -101,6 +101,9 @@ async function main(): Promise<void> {
   const config = loadConfig([]);
 
   const client = buildClient(config);
+  // The override if one was given, else the SDK's: the REST base with the
+  // scheme swapped and the route prefix kept, on the host the token is minted on.
+  const wsUrl = config.wsUrl ?? client.wsUrl;
 
   // `wsTokenProvider()` rather than a token minted once. Tokens are single-use
   // and expire in 60 seconds, so a cached one is a session that comes back
@@ -112,7 +115,7 @@ async function main(): Promise<void> {
   // same deployment the socket below connects to, because they are built from
   // one config.
   const ws = createWsClient({
-    url: config.wsUrl,
+    url: wsUrl,
     tokenProvider: client.wsTokenProvider(),
   });
 
@@ -126,14 +129,14 @@ async function main(): Promise<void> {
   const orders = ws.subscribe("orders");
 
   try {
-    await waitForOpen(ws, config.wsUrl);
+    await waitForOpen(ws, wsUrl);
   } catch (error) {
     orders.unsubscribe();
     ws.close();
     throw error;
   }
-  log(`ws open at ${config.wsUrl}/ws — this is the connection COD watches`);
-  send({ event: "ws-open", url: config.wsUrl });
+  log(`ws open at ${wsUrl}/ws — this is the connection COD watches`);
+  send({ event: "ws-open", url: wsUrl });
 
   void (async () => {
     for await (const event of orders.events) {
@@ -155,7 +158,7 @@ async function main(): Promise<void> {
   const mark = await client.fetchMarkPrice(config.market);
   const plan = planRestingOrder(market, mark, config.priceOffsetBps);
 
-  const placed = await client.placeOrder(plan.order);
+  const placed = await client.createOrder(plan.order);
   log(`placed ${placed.order.id} status=${placed.order.status}`);
   if (placed.fills.length > 0) {
     // A `PostOnly` order the engine crossed would be a venue bug, but reporting

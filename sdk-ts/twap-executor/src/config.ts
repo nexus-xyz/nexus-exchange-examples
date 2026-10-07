@@ -6,20 +6,21 @@
 
 import { existsSync } from "node:fs";
 
+import { Network, baseUrlForNetwork } from "@nexus-xyz/exchange-ts";
+
 import * as dec from "./decimal.js";
 import type { Dec } from "./decimal.js";
 import type { Side } from "./plan.js";
 
 /**
- * Where testnet answers.
+ * Where testnet answers: the SDK's own `Network.Testnet` base, which in
+ * `@nexus-xyz/exchange-ts` 0.6.0 is `https://api.testnet.nexus.xyz/v1`.
  *
- * Spelled out rather than taken from `Network.Testnet`, as in the other
- * `sdk-ts` examples: `@nexus-xyz/exchange-ts` 0.4.0 ships
- * `https://exchange.nexus.xyz/api/exchange` as its testnet base, and that host
- * proxies to a decommissioned service (HTTP 500 on every route). The
- * `/indexer` prefix is part of the deployment. The bare host 404s.
+ * Read from the SDK rather than spelled out, so this example follows the SDK's
+ * network map instead of drifting from it. Requests go to the spec's bare paths
+ * under it (`/orders`, `/fills`), and the bare host root 404s.
  */
-const TESTNET_BASE_URL = "https://api.testnet.nexus.xyz/indexer";
+const TESTNET_BASE_URL = baseUrlForNetwork(Network.Testnet);
 
 /** Fraction of each rate-limit budget this app spends. */
 const DEFAULT_UTILISATION = 0.5;
@@ -121,14 +122,10 @@ function parseBaseUrl(raw: string): string {
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new ConfigError("NEXUS_EXCHANGE_API_URL must be http:// or https://");
   }
-  const path = url.pathname.replace(/\/+$/, "");
-  if (path.endsWith("/api/v1")) {
-    throw new ConfigError(
-      "NEXUS_EXCHANGE_API_URL is the deployment base and must not include /api/v1, which the client adds. " +
-        `Try ${JSON.stringify(`${url.origin}${path.slice(0, -"/api/v1".length)}`)}.`,
-    );
-  }
-  return `${url.origin}${path}`;
+  // A base ending in the old `/api/v1` layout is refused by the SDK's
+  // `customNetwork`, whose message names the base it wanted; `Venue` reports it
+  // against this variable.
+  return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
 }
 
 /**

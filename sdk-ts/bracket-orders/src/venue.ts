@@ -117,29 +117,29 @@ export class Venue {
   }
 
   cancelOnDisconnect(): Promise<CancelOnDisconnectStatus> {
-    return this.client.getCancelOnDisconnect();
+    return this.client.fetchCancelOnDisconnect();
   }
 
   async openOrders(): Promise<unknown[]> {
-    return (await this.client.getOpenOrders()) as unknown[];
+    return (await this.client.fetchOpenOrders()) as unknown[];
   }
 
   async orderHistory(): Promise<unknown[]> {
-    return (await this.client.getOrderHistory({ limit: 200 })) as unknown[];
+    return (await this.client.fetchOrders({ limit: 200 })) as unknown[];
   }
 
   async fills(): Promise<unknown[]> {
-    return (await this.client.getFills({ limit: 200 })) as unknown[];
+    return (await this.client.fetchMyTrades({ limit: 200 })) as unknown[];
   }
 
   async positions(): Promise<unknown[]> {
-    return (await this.client.getPositions()) as unknown[];
+    return (await this.client.fetchPositions()) as unknown[];
   }
 
   /** `POST /orders`, exactly once. */
   async place(order: BracketOrder): Promise<Submission> {
     try {
-      return { kind: "accepted", response: await this.client.placeOrder(order) };
+      return { kind: "accepted", response: await this.client.createOrder(order) };
     } catch (error) {
       if (error instanceof ApiError && error.status < 500) {
         return { kind: "refused", status: error.status, detail: describe(error) };
@@ -155,9 +155,10 @@ export class Venue {
   }
 
   /**
-   * `DELETE /api/v1/orders/{id}?market_id=…`, the call one-cancels-other
-   * depends on. Retried on transient failures: a cancel is idempotent, and a
-   * 404 means it's already gone, which is the goal.
+   * `DELETE /orders/{id}?market_id=…`, the call one-cancels-other depends on.
+   * Retried on transient failures: a cancel is idempotent, and a 404 means it's
+   * already gone, which is the goal. This loop is the only retry it gets: from
+   * SDK 0.6.0 the client sends a `DELETE` once and surfaces the first failure.
    */
   async cancel(orderId: string, market: string): Promise<void> {
     for (let attempt = 1; ; attempt += 1) {

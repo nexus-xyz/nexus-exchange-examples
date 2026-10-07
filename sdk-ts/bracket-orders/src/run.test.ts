@@ -146,22 +146,22 @@ class FakeVenue {
     if (req.method === "GET") this.reads += 1;
 
     if (route === "GET /markets") return send(200, [{ id: MARKET, tick_size: "0.5", lot_size: "0.001", min_order_size: "0.001" }]);
-    if (route === `GET /api/v1/markets/${MARKET}/mark-price`) return send(200, { market_id: MARKET, mark_price: "80000" });
-    if (route === "GET /api/v1/account/cancel-on-disconnect") {
+    if (route === `GET /markets/${MARKET}/mark-price`) return send(200, { market_id: MARKET, mark_price: "80000" });
+    if (route === "GET /account/cancel-on-disconnect") {
       return send(200, { enabled: this.codActive, active: this.codActive, grace_secs: this.codActive ? 5 : null });
     }
-    if (route === "GET /api/v1/positions") {
+    if (route === "GET /positions") {
       return send(200, dec.isZero(this.position) ? [] : [{ market_id: MARKET, side: "Long", size: dec.format(this.position) }]);
     }
-    if (route === "GET /api/v1/orders") return send(200, this.orders.filter((o) => o.status === "open").map(ccxt));
-    if (route === "GET /api/v1/orders/history") return send(200, this.orders.filter((o) => o.status !== "open").map(ccxt));
-    if (route === "GET /api/v1/fills") return send(200, [...this.fills].reverse());
+    if (route === "GET /orders") return send(200, this.orders.filter((o) => o.status === "open").map(ccxt));
+    if (route === "GET /orders/history") return send(200, this.orders.filter((o) => o.status !== "open").map(ccxt));
+    if (route === "GET /fills") return send(200, [...this.fills].reverse());
     if (route === "POST /ws/token") {
       const token = `tok-${this.tokens.size}-${Date.now()}`;
       this.tokens.add(token);
       return send(200, { token, expires_in_secs: 60 });
     }
-    if (route === "POST /api/v1/orders") {
+    if (route === "POST /orders") {
       const chunks: Buffer[] = [];
       for await (const c of req) chunks.push(c as Buffer);
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
@@ -195,7 +195,7 @@ class FakeVenue {
       }
       return send(201, { order: ccxt(order), fills });
     }
-    const del = /^DELETE \/api\/v1\/orders\/([^/]+)$/.exec(route);
+    const del = /^DELETE \/orders\/([^/]+)$/.exec(route);
     if (del) {
       if (url.searchParams.get("market_id") !== MARKET) return send(400, { code: "InvalidRequest", message: "market_id is required" });
       const o = this.orders.find((x) => x.id === del[1]);
@@ -220,7 +220,8 @@ async function withVenue(fn: (venue: FakeVenue, config: Config) => Promise<void>
     apiSecret: "11".repeat(32),
     baseUrl: `http://127.0.0.1:${port}`,
     baseUrlOverridden: true,
-    wsUrl: `ws://127.0.0.1:${port}`,
+    // No override: the socket URL is the one the SDK derives from the base.
+    wsUrl: null,
     funds: "play",
     live: true,
     bracket: { market: MARKET, side: "Buy", size: dec.parse("0.006"), limit: dec.parse("80010"), tp: dec.parse("80500"), sl: dec.parse("79600") },

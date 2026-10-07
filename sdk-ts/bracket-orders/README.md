@@ -21,7 +21,7 @@ was no reference price to check the triggers against, and the app says so:
 
 ```text
 $ npm start -- --limit 81300 --tp 82100 --sl 80900 --run-id readme
-01:29:46  target  https://api.testnet.nexus.xyz/indexer (testnet, play funds); ws wss://api.testnet.nexus.xyz/indexer/ws
+01:29:46  target  https://api.testnet.nexus.xyz/v1 (testnet, play funds); ws wss://api.testnet.nexus.xyz/v1/ws
 01:29:46  mode    dry run: reads live data, sends no write of any kind
 01:29:48  mark    unavailable (the venue answered 503) and the book is empty: no reference price, so the trigger-vs-mark checks can't run
 01:29:48  plan    Buy 0.002 BTC-USDX-PERP IOC at worst 81300, then two reduce-only Sell exits:
@@ -35,7 +35,7 @@ $ npm start -- --limit 81300 --tp 82100 --sl 80900 --run-id readme
 01:29:48    POST /orders {"market_id":"BTC-USDX-PERP","side":"Buy","order_type":"Limit","price":"81300","quantity":"0.002","time_in_force":"IOC","client_id":"br-readme-entry"}
 01:29:48    POST /orders {"market_id":"BTC-USDX-PERP","side":"Sell","quantity":"0.002","time_in_force":"GTC","reduce_only":true,"order_type":"StopMarket","trigger_price":"80900","client_id":"br-readme-sl"}
 01:29:48    POST /orders {"market_id":"BTC-USDX-PERP","side":"Sell","quantity":"0.002","time_in_force":"GTC","reduce_only":true,"order_type":"TakeProfitMarket","trigger_price":"82100","client_id":"br-readme-tp"}
-01:29:48    then hold /ws orders+fills, and cancel the survivor with DELETE /api/v1/orders/{id}?market_id=BTC-USDX-PERP
+01:29:48    then hold /ws orders+fills, and cancel the survivor with DELETE /orders/{id}?market_id=BTC-USDX-PERP
 01:29:48  dry run: nothing was sent.
 ```
 
@@ -85,10 +85,10 @@ interrupted. The exits are left resting, so the position stays protected:
 
 ### What the venue offers, and what this relies on
 
-Checked against spec **v0.8.1** (the tag SDK 0.4.0 is compiled against) and the
+Checked against spec **v0.8.1** (the tag SDK 0.6.0 is compiled against) and the
 SDK's own types:
 
-| | Spec v0.8.1 | SDK 0.4.0 |
+| | Spec v0.8.1 | SDK 0.6.0 |
 | --- | --- | --- |
 | Conditional types | `StopLimit`, `StopMarket`, `TakeProfitLimit`, `TakeProfitMarket`, `TrailingStop`, `TrailingLimit` | all six on `OrderType` |
 | Trigger | `trigger_price` for the four non-trailing types (`stop_price` is a deprecated fallback) | `OrderRequest.trigger_price` |
@@ -201,9 +201,6 @@ With `--live`, before sending anything:
 - **`client_id` isn't in spec v0.8.1 or the SDK types**, but the venue accepts
   it. Each order carries one derived from the run id, so a placement whose
   answer was lost is looked up by client id and **never resent**.
-- **The WebSocket base keeps the `/indexer` prefix.** `Client.wsUrl` drops it,
-  so the base is derived in `src/config.ts` and handed to `createWsClient`, as in
-  [`dead-mans-switch`](../dead-mans-switch).
 
 ### Money is never a float
 
@@ -220,10 +217,12 @@ exactly where binary floating point would leave dust unprotected.
 
 ## Pinned versions
 
-This example pins **`@nexus-xyz/exchange-ts` `0.5.0`**, exact version, with
-`package-lock.json` committed. 0.5.0 is compiled against Exchange API spec
-**`v0.8.1`**. Toolchain: `typescript` `7.0.2`, `tsx` `4.23.8`, `@types/node`
-`26.1.2`.
+This example pins **`@nexus-xyz/exchange-ts` `0.6.0`**, exact version, with
+`package-lock.json` committed. 0.6.0 is compiled against Exchange API spec
+**`v0.8.1`**, sends the spec's bare paths (`/orders`) under the `/v1` base, and
+never re-sends a `DELETE` on its own, so `src/venue.ts` owns the cancel retry
+and `src/watch.ts` re-reads before cancelling again. Toolchain: `typescript`
+`7.0.2`, `tsx` `4.23.8`, `@types/node` `26.1.2`.
 
 ## Setup
 
@@ -276,19 +275,18 @@ the exits left resting.
 | --- | --- | --- |
 | `NEXUS_EXCHANGE_API_KEY` | for `--live` | API key. Without it, the dry run uses public data only |
 | `NEXUS_EXCHANGE_API_SECRET` | for `--live` | Secret paired with the key. Set both or neither |
-| `NEXUS_EXCHANGE_API_URL` | no | REST base. Defaults to `https://api.testnet.nexus.xyz/indexer`. Must not include `/api/v1` |
-| `NEXUS_EXCHANGE_WS_URL` | no | WebSocket base; `/ws` is appended. Defaults to the REST base with its path kept |
+| `NEXUS_EXCHANGE_API_URL` | no | REST base. Defaults to the SDK's `Network.Testnet` base, `https://api.testnet.nexus.xyz/v1`. Must not end in `/api/v1`, which the SDK refuses |
+| `NEXUS_EXCHANGE_WS_URL` | no | WebSocket base; `/ws` is appended. Defaults to the client's `wsUrl`: the REST base with the scheme swapped and its path kept |
 | `NEXUS_EXCHANGE_FUNDS` | no | `play` to declare an overridden host a testnet. `--live` refuses an undeclared one |
 | `NEXUS_BRACKET_RECONCILE_SECONDS` | no | REST re-read interval when the socket is quiet, 2-300. Default `15` |
 
 ## Which deployment it talks to
 
-**Testnet: play funds.** The default base is
-`https://api.testnet.nexus.xyz/indexer`, spelled out in `src/config.ts` rather
-than taken from `Network.Testnet`. As in the other `sdk-ts` examples, the SDK
-0.4.0 preset points at `https://exchange.nexus.xyz/api/exchange`, which proxies
-to a decommissioned service and answers 500. The `/indexer` prefix is part of
-the deployment, since the bare host 404s. An `NEXUS_EXCHANGE_API_URL` override
+**Testnet: play funds.** The default base is the SDK's `Network.Testnet` base,
+`https://api.testnet.nexus.xyz/v1`, read in `src/config.ts` with
+`baseUrlForNetwork` rather than spelled out. Requests go to the spec's bare
+paths under it, and the WebSocket is the same base with the scheme swapped,
+which is what the client's `wsUrl` returns. An `NEXUS_EXCHANGE_API_URL` override
 is declared `funds: "unknown"` unless you set `NEXUS_EXCHANGE_FUNDS=play`, and
 the first line of output says which.
 
@@ -313,10 +311,13 @@ the first line of output says which.
 
 - **What ran against live testnet, and what didn't.** The dry run was run end to
   end against `api.testnet.nexus.xyz` without credentials, and the transcript
-  above is that run. **The `--live` trading path has not been run against
-  testnet.** There were no testnet credentials to hand, and on the same day the
-  venue's `GET /status` reported its engine `down`: the mark price answered
-  `503` and every book was empty, so there was nothing to trade against. The
+  above is that run. Its `target` and `DELETE` lines were edited for SDK 0.6.0's
+  `/v1` base rather than re-captured; an uncredentialed dry run against that
+  base on 2026-10-07 printed those two lines as shown. **The `--live` trading
+  path has not been run against testnet.** There were no testnet credentials to
+  hand, and on the day of the capture the venue's `GET /status` reported its
+  engine `down`: the mark price answered `503` and every book was empty, so
+  there was nothing to trade against. The
   live path ran only against the fake venue in `src/run.test.ts`, which
   implements the behaviour this app depends on as far as the spec and the live
   wire describe it. That's not the same as the venue: in particular, the

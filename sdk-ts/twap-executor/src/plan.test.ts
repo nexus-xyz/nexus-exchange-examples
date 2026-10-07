@@ -136,11 +136,11 @@ test("reconcile matches by client id across both vocabularies, and attaches fill
 test("weights come from the pinned spec's markers, and absence means 1", () => {
   assert.equal(SPEC_TAG, API_VERSION, "spec-weights.json must be regenerated when the SDK pin moves");
   assert.ok(allMarkers().length > 0);
-  assert.equal(weightOf("GET", "/api/v1/fills"), 5);
-  assert.equal(weightOf("GET", "/api/v1/orders/history"), 5);
-  assert.equal(weightOf("POST", "/api/v1/orders"), 1);
-  assert.equal(weightOf("GET", "/api/v1/account/rate-limit"), 0);
-  assert.throws(() => weightOf("POST", "/api/v1/orders/batch"), /formula/);
+  assert.equal(weightOf("GET", "/fills"), 5);
+  assert.equal(weightOf("GET", "/orders/history"), 5);
+  assert.equal(weightOf("POST", "/orders"), 1);
+  assert.equal(weightOf("GET", "/account/rate-limit"), 0);
+  assert.throws(() => weightOf("POST", "/orders/batch"), /formula/);
 });
 
 test("a 429 pause is never shorter than retry-after, and jitter only adds", () => {
@@ -159,6 +159,6 @@ test("budgets: read from the status endpoint, trading inferred when buckets are 
   assert.match(lines, /cancel {2}shares the order bucket/);
   pacer.applyStatus({ tier: "pro", limit: 20, remaining: 20, reset_at_ms: 0, buckets: { order: { limit: 30, remaining: 30, reset_at_ms: 0 }, cancel: { limit: 40, remaining: 40, reset_at_ms: 0 } } });
   assert.match(pacer.describe().join("\n"), /cancel {2}40\/s/);
-  assert.equal(classify("DELETE", "/api/v1/orders/{order_id}"), "cancel");
-  assert.equal(classify("GET", "/api/v1/orders"), "request");
+  assert.equal(classify("DELETE", "/orders/{order_id}"), "cancel");
+  assert.equal(classify("GET", "/orders"), "request");
 });

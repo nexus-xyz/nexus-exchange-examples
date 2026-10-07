@@ -184,7 +184,7 @@ export function readPositionSize(rows: readonly unknown[], market: string): Dec 
 
 export type ExitKind = "tp" | "sl";
 
-/** The venue's `client_id`: not in spec v0.8.1 or the SDK 0.4.0 types, but accepted by the live venue. */
+/** The venue's `client_id`: not in spec v0.8.1 or the SDK 0.6.0 types, but accepted by the live venue. */
 export type BracketOrder = OrderRequest & { client_id: string };
 
 export function exitSide(side: Side): Side {

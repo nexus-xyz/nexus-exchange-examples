@@ -7,10 +7,10 @@
 //    first. The SDK's `fetchImpl` hook is used to watch every response's
 //    rate-limit headers, since the SDK's typed methods don't surface them.
 //  * **A retry policy this app owns.** The SDK is built with `maxRetries: 0`.
-//    Its own policy is sound (it never retries a `POST`) but it waits exactly
-//    `retry-after` with no jitter on top, and it retries a `DELETE` on its own
-//    schedule. Here reads and cancels are retried on `429` and transient
-//    failures, with jitter. An order submission is **never** retried.
+//    Its own policy is sound (from 0.6.0 it retries reads only, never a
+//    write) but it waits exactly `retry-after` with no jitter on top. Here
+//    reads and cancels are retried on `429` and transient failures, with
+//    jitter. An order submission is **never** retried.
 
 import {
   ApiError,
@@ -155,28 +155,28 @@ export class Venue {
     return this.idempotent("GET", "/markets", () => this.client.fetchMarkets());
   }
 
-  /** `GET /api/v1/markets/{id}/orderbook`. Public. */
+  /** `GET /markets/{id}/orderbook`. Public. */
   book(market: string): Promise<OrderBook> {
-    return this.idempotent("GET", "/api/v1/markets/{market_id}/orderbook", () => this.client.fetchOrderBook(market));
+    return this.idempotent("GET", "/markets/{market_id}/orderbook", () => this.client.fetchOrderBook(market));
   }
 
   /** `GET /account/rate-limit`. Weight 0: the one free call. */
   rateLimit(): Promise<unknown> {
-    return this.idempotent("GET", "/api/v1/account/rate-limit", () => this.client.getRateLimit());
+    return this.idempotent("GET", "/account/rate-limit", () => this.client.fetchRateLimitStatus());
   }
 
   openOrders(): Promise<unknown[]> {
-    return this.idempotent("GET", "/api/v1/orders", () => this.client.getOpenOrders());
+    return this.idempotent("GET", "/orders", () => this.client.fetchOpenOrders());
   }
 
   /** Weight 5 by the spec's marker, so it's read once per reconcile, not per slice. */
   orderHistory(): Promise<unknown[]> {
-    return this.idempotent("GET", "/api/v1/orders/history", () => this.client.getOrderHistory({ limit: 500 }));
+    return this.idempotent("GET", "/orders/history", () => this.client.fetchOrders({ limit: 500 }));
   }
 
   /** Weight 5 by the spec's marker. */
   fills(): Promise<unknown[]> {
-    return this.idempotent("GET", "/api/v1/fills", () => this.client.getFills({ limit: 1000 }));
+    return this.idempotent("GET", "/fills", () => this.client.fetchMyTrades({ limit: 1000 }));
   }
 
   /**
@@ -194,10 +194,10 @@ export class Venue {
    * it anyway.
    */
   async place(order: ChildOrder): Promise<Submission> {
-    await this.pacer.reserve("order", weightOf("POST", "/api/v1/orders"), this.sleep);
+    await this.pacer.reserve("order", weightOf("POST", "/orders"), this.sleep);
     this.lastOrderStatus = null;
     try {
-      const response = await this.client.placeOrder(order);
+      const response = await this.client.createOrder(order);
       return { kind: "accepted", replay: this.lastOrderStatus === 200, response };
     } catch (error) {
       if (error instanceof ApiError && error.status < 500) {
@@ -214,11 +214,11 @@ export class Venue {
   }
 
   /**
-   * `DELETE /api/v1/orders/{id}?market_id=…`. A cancel is idempotent, so it's
+   * `DELETE /orders/{id}?market_id=…`. A cancel is idempotent, so it's
    * retried, and a 404 means it's already gone, which is the goal.
    */
   cancel(orderId: string, market: string): Promise<void> {
-    return this.idempotent("DELETE", "/api/v1/orders/{order_id}", async () => {
+    return this.idempotent("DELETE", "/orders/{order_id}", async () => {
       try {
         await this.client.cancelOrder(orderId, market);
       } catch (error) {

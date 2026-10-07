@@ -5,19 +5,17 @@
 
 import { existsSync } from "node:fs";
 
+import { Network, baseUrlForNetwork } from "@nexus-xyz/exchange-ts";
+
 /**
- * Where testnet actually answers.
+ * Where testnet answers: the SDK's own `Network.Testnet` base, which in
+ * `@nexus-xyz/exchange-ts` 0.6.0 is `https://api.testnet.nexus.xyz/v1`.
  *
- * This is spelled out here rather than taken from `Network.Testnet`, and that
- * is not a style choice. `@nexus-xyz/exchange-ts` 0.4.0 ships
- * `https://exchange.nexus.xyz/api/exchange` as the testnet base, and that host
- * returns **HTTP 500 on every route** — it proxies to a decommissioned service.
- * The durable host is below, and the `/indexer` prefix is load-bearing: the
- * bare origin 404s. `nexus-exchange-ts#78` moves the constant; until a release
- * carries it, an example that names `Network.Testnet` cannot reach the venue at
- * all. See the README's "Which deployment it talks to".
+ * Read from the SDK rather than spelled out, so the example follows the SDK's
+ * network map. It is still resolved to a concrete string here because the
+ * app's first line prints it. See the README's "Which deployment it talks to".
  */
-const TESTNET_BASE_URL = "https://api.testnet.nexus.xyz/indexer";
+const TESTNET_BASE_URL = baseUrlForNetwork(Network.Testnet);
 
 /** The market the demonstration rests its one order on. */
 const DEFAULT_MARKET = "BTC-USDX-PERP";
@@ -70,12 +68,12 @@ const MAX_SLACK_SECONDS = 600;
 export interface Config {
   readonly apiKey: string;
   readonly apiSecret: string;
-  /** REST deployment base. Always a concrete value — never left to the SDK. */
+  /** REST deployment base: the SDK's testnet base unless overridden. Always concrete. */
   readonly baseUrl: string;
   /** True when `baseUrl` came from the environment rather than the default. */
   readonly baseUrlOverridden: boolean;
-  /** WebSocket base, prefix included. Derived from `baseUrl` unless overridden. */
-  readonly wsUrl: string;
+  /** The `NEXUS_EXCHANGE_WS_URL` override, prefix included, or `null` for the client's own `wsUrl`. */
+  readonly wsUrl: string | null;
   readonly market: string;
   readonly priceOffsetBps: number;
   readonly watchSlackMs: number;
@@ -144,28 +142,6 @@ function wholeNumber(name: string, fallback: number, min: number, max: number): 
   return value;
 }
 
-/**
- * Turn a REST base into a WebSocket base, **keeping the path prefix**.
- *
- * This function exists because the SDK's own derivation does not keep it. In
- * 0.4.0 `Client.wsUrl` is the REST origin with the scheme swapped, and
- * `customNetwork` refuses a `wsUrl` carrying a path at all ("wsUrl must be an
- * origin with no path"). Against this deployment that yields
- * `wss://api.testnet.nexus.xyz/ws`, which 404s — the live stream is under
- * `/indexer`. So the WS base is computed here and handed straight to
- * `createWsClient`, which takes a free-form `url` and does not go through the
- * network descriptor.
- *
- * Not a workaround worth hiding: it is the single reason this example can hold
- * the authenticated socket that cancel-on-disconnect keys off, and it stops
- * being necessary the moment `nexus-exchange-ts#78` ships.
- */
-function deriveWsUrl(baseUrl: string): string {
-  const url = new URL(baseUrl);
-  url.protocol = url.protocol === "http:" ? "ws:" : "wss:";
-  return url.toString().replace(/\/+$/, "");
-}
-
 function parseBaseUrl(name: string, raw: string): string {
   let url: URL;
   try {
@@ -181,17 +157,10 @@ function parseBaseUrl(name: string, raw: string): string {
       `${name} must be a plain base URL — no query, fragment or userinfo, got ${JSON.stringify(raw)}`,
     );
   }
-  // The SDK appends `/api/v1` itself and refuses a base that already carries
-  // it. Catching it here names the variable that is wrong instead of letting
-  // the SDK's message arrive with no context.
-  const path = url.pathname.replace(/\/+$/, "");
-  if (path.endsWith("/api/v1")) {
-    throw new ConfigError(
-      `${name} is the deployment base and must not include /api/v1 — the client adds it. ` +
-        `Try ${JSON.stringify(`${url.origin}${path.slice(0, -"/api/v1".length)}`)}.`,
-    );
-  }
-  return `${url.origin}${path}`;
+  // A base ending in the old `/api/v1` layout is refused by the SDK's
+  // `customNetwork`, whose message names the base it wanted; `buildClient`
+  // reports it against this variable.
+  return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
 }
 
 /**
@@ -248,10 +217,8 @@ export function loadConfig(argv: readonly string[]): Config {
     rawBase === undefined ? TESTNET_BASE_URL : parseBaseUrl("NEXUS_EXCHANGE_API_URL", rawBase);
 
   const rawWs = env("NEXUS_EXCHANGE_WS_URL");
-  let wsUrl: string;
-  if (rawWs === undefined) {
-    wsUrl = deriveWsUrl(baseUrl);
-  } else {
+  let wsUrl: string | null = null;
+  if (rawWs !== undefined) {
     let parsed: URL;
     try {
       parsed = new URL(rawWs);
@@ -267,8 +234,9 @@ export function loadConfig(argv: readonly string[]): Config {
     }
     // A `ws://` socket beside an `https://` REST base is a TLS downgrade for
     // the one request that carries a spendable token. The SDK refuses this pair
-    // in `customNetwork`; the same rule applies to the URL this app builds by
-    // hand, or the check would have been bypassed rather than satisfied.
+    // in `customNetwork`; the same rule applies to an override, which is handed
+    // straight to `createWsClient`, or the check would have been bypassed
+    // rather than satisfied.
     if (parsed.protocol === "ws:" && baseUrl.startsWith("https:")) {
       throw new ConfigError(
         "NEXUS_EXCHANGE_WS_URL is insecure ws:// while the REST base is https://. " +

@@ -63,6 +63,13 @@ const SESSION_READY_TIMEOUT_MS = 60_000;
 const WATCH_POLL_MS = 1_000;
 
 /**
+ * Cancel-alls the cleanup sweep sends before it gives up and says so. The SDK
+ * sends a write once (0.6.0 retries reads only), so the second one is this
+ * app's, sent only after a re-read shows something is still resting.
+ */
+const CLEANUP_CANCEL_ATTEMPTS = 2;
+
+/**
  * Aborted by SIGINT/SIGTERM.
  *
  * A signal handler is the wrong place to write cleanup: it can fire at any
@@ -152,10 +159,10 @@ async function dryRun(client: Client, config: Config): Promise<number> {
   const plan = await buildPlan(client, config);
   log(`would place: ${describePlan(plan, config.priceOffsetBps)}`);
 
-  const status = await client.getCancelOnDisconnect();
+  const status = await client.fetchCancelOnDisconnect();
   log(describeCod(status));
 
-  const resting = await client.getOpenOrders();
+  const resting = await client.fetchOpenOrders();
   log(`this account currently has ${resting.length} resting order(s)`);
 
   const deadlineSeconds = (graceMs(status) + config.watchSlackMs) / 1000;
@@ -253,7 +260,7 @@ function awaitResting(session: Session): Promise<RestingOrder> {
       }
       if (message.event === "resting") {
         // Both halves. The market id was already on the wire and discarded,
-        // which is exactly the argument `getOrder` needs to tell a cancel from
+        // which is exactly the argument `fetchOrder` needs to tell a cancel from
         // a fill (@nvizble, #20).
         if (!done()) resolve({ orderId: message.orderId, marketId: message.marketId });
       } else if (message.event === "failed") {
@@ -300,7 +307,7 @@ function isAlive(session: Session | null): session is Session {
  */
 async function stillResting(client: Client, orderId: string): Promise<boolean | "unknown"> {
   try {
-    const open = await client.getOpenOrders();
+    const open = await client.fetchOpenOrders();
     return open.some((order: Order) => order.id === orderId);
   } catch (error) {
     if (isTransient(error)) return "unknown";
@@ -309,7 +316,7 @@ async function stillResting(client: Client, orderId: string): Promise<boolean | 
 }
 
 /**
- * WHY the order left the book — which absence from `getOpenOrders` cannot say.
+ * WHY the order left the book, which absence from `fetchOpenOrders` cannot say.
  *
  * `stillResting` returning false means "not open", and that is equally true of
  * cancelled, filled, expired and rejected. Printing "PROVEN … by the venue" on
@@ -332,7 +339,7 @@ async function terminalStatus(
   marketId: string,
 ): Promise<OrderStatus | "unknown"> {
   try {
-    const order = await client.getOrder(orderId, marketId);
+    const order = await client.fetchOrder(orderId, marketId);
     return order.status;
   } catch (error) {
     if (isTransient(error)) return "unknown";
@@ -342,14 +349,14 @@ async function terminalStatus(
 
 /** The live demonstration. Returns the process exit code. */
 async function liveRun(client: Client, config: Config): Promise<number> {
-  const before = await client.getCancelOnDisconnect();
+  const before = await client.fetchCancelOnDisconnect();
   log(describeCod(before));
 
   // COD is account-wide: when it fires it cancels **every** resting order on
   // the account, not just the one this app placed. Running the demonstration on
   // an account that is already working would destroy somebody's book to prove a
   // point about a different order. Refuse, before arming anything.
-  const existing = await client.getOpenOrders();
+  const existing = await client.fetchOpenOrders();
   if (existing.length > 0) {
     log(`REFUSED: this account has ${existing.length} resting order(s).`);
     log("  cancel-on-disconnect cancels EVERY resting order on the account when it fires,");
@@ -500,6 +507,7 @@ async function liveRun(client: Client, config: Config): Promise<number> {
     // Cleanup, in the order that matters. None of these take an abort signal: a
     // Ctrl-C during cleanup must not be what leaves an order on the book.
     if (isAlive(session)) session.child.kill("SIGKILL");
+    let cancelFailed = false;
     if (orderId !== null) {
       // Reached when the demonstration failed, when it was interrupted, or when
       // it threw partway. This is the safety net that makes the example
@@ -509,14 +517,12 @@ async function liveRun(client: Client, config: Config): Promise<number> {
         await client.cancelOrder(orderId, marketId);
         log(`cleanup: cancelled ${orderId}`);
       } catch (error) {
-        log(`cleanup: FAILED to cancel ${orderId}: ${describe(error)}`);
-        log("  Cancel it yourself before leaving this account unattended.");
-        // And say so in the exit code. An interrupted run whose cancel failed
-        // used to still exit 130, which the README defines as "Interrupted.
-        // Cleanup ran." — so a supervisor reading exit codes could not tell
-        // that an order is still out there (@nvizble, #20). The whole point of
-        // this app is that a machine can tell.
-        outcome = EXIT_NOT_PROVEN;
+        // Not the last word. The SDK sends a `DELETE` once and surfaces the
+        // first failure (0.6.0), and a lost response may still have cancelled
+        // the order. So the sweep below re-reads the book and re-sends, and the
+        // verdict waits for it.
+        log(`cleanup: cancel of ${orderId} failed: ${describe(error)}. Re-reading the book before re-sending.`);
+        cancelFailed = true;
       }
     }
     // THE SWEEP, BEFORE COD IS DISARMED, because `orderId` is not the same
@@ -526,7 +532,7 @@ async function liveRun(client: Client, config: Config): Promise<number> {
     // and every rejection path of that call leaves it `null`: the watch
     // timeout, the session reporting `failed`, the child exiting or erroring
     // before `resting`, and interrupt. In each, the order may already be on
-    // the book: the client is built with `timeoutMs: 5_000` and `placeOrder`
+    // the book: the client is built with `timeoutMs: 5_000` and `createOrder`
     // is a POST, which the SDK does not retry, so a timeout on a request the
     // engine ACCEPTED throws in the child and the parent never learns the id.
     // The branch above then skips the cancel, and this block used to disarm
@@ -535,24 +541,33 @@ async function liveRun(client: Client, config: Config): Promise<number> {
     //
     // `cancelAllOrders()` is safe here for one specific reason: `liveRun`
     // refused to start on a non-empty book, so anything resting now is ours.
+    // That is also what makes re-sending it safe here. The SDK will not retry
+    // a `DELETE /orders` itself (a blind re-send cancels whatever was placed
+    // since), so on a transient failure this re-reads the book and sends the
+    // cancel again only if the read still shows something resting.
     // A FLAG, NOT AN EARLY `return`. A `return` inside `finally` discards the
     // exception that is propagating — including the `Interrupted` the caller
     // matches on to choose its exit code and message.
     let bookConfirmedEmpty = false;
     try {
-      const open = await client.getOpenOrders();
-      if (open.length === 0) {
-        bookConfirmedEmpty = true;
-      } else {
-        log(`cleanup: ${open.length} order(s) still resting — cancelling before disarming`);
-        await client.cancelAllOrders();
-        const after = await client.getOpenOrders();
-        if (after.length > 0) {
-          log(`cleanup: FAILED — ${after.length} order(s) STILL resting.`);
-          log("  Cancel them yourself before leaving this account unattended.");
-        } else {
+      for (let sent = 0; ; sent += 1) {
+        const open = await client.fetchOpenOrders();
+        if (open.length === 0) {
           bookConfirmedEmpty = true;
-          log("cleanup: book is empty");
+          if (sent > 0 || cancelFailed) log("cleanup: book is empty");
+          break;
+        }
+        if (sent === CLEANUP_CANCEL_ATTEMPTS) {
+          log(`cleanup: FAILED — ${open.length} order(s) STILL resting.`);
+          log("  Cancel them yourself before leaving this account unattended.");
+          break;
+        }
+        log(`cleanup: ${open.length} order(s) still resting — cancelling before disarming`);
+        try {
+          await client.cancelAllOrders();
+        } catch (error) {
+          if (!isTransient(error)) throw error;
+          log(`cleanup: cancel-all failed: ${describe(error)}. Re-reading before re-sending.`);
         }
       }
     } catch (error) {
@@ -560,6 +575,17 @@ async function liveRun(client: Client, config: Config): Promise<number> {
       // would clear it. An account left armed is the safe direction to err in;
       // an order left resting is not.
       log(`cleanup: could not confirm the book is empty: ${describe(error)}`);
+    }
+
+    if (cancelFailed && !bookConfirmedEmpty) {
+      // And say so in the exit code. An interrupted run whose cancel failed
+      // used to still exit 130, which the README defines as "Interrupted.
+      // Cleanup ran.", so a supervisor reading exit codes could not tell that
+      // an order is still out there (@nvizble, #20). The whole point of this
+      // app is that a machine can tell. A failed cancel the sweep then cleared
+      // leaves nothing out there, so it is not this case.
+      log(`cleanup: FAILED to cancel ${orderId}. Cancel it yourself before leaving this account unattended.`);
+      outcome = EXIT_NOT_PROVEN;
     }
 
     if (restoreCodTo === null) {
@@ -570,7 +596,17 @@ async function liveRun(client: Client, config: Config): Promise<number> {
       log("  so the venue keeps its chance to cancel. Turn it off once you have checked.");
     } else {
       try {
-        const restored = await client.setCancelOnDisconnect(restoreCodTo);
+        let restored: CancelOnDisconnectStatus;
+        try {
+          restored = await client.setCancelOnDisconnect(restoreCodTo);
+        } catch (error) {
+          // Sent once, like every write since SDK 0.6.0, and a lost response
+          // may hide a write that applied. Read the setting before re-sending.
+          if (!isTransient(error)) throw error;
+          log(`cleanup: restoring cancel-on-disconnect failed: ${describe(error)}. Re-reading before re-sending.`);
+          const now = await client.fetchCancelOnDisconnect();
+          restored = now.enabled === restoreCodTo ? now : await client.setCancelOnDisconnect(restoreCodTo);
+        }
         log(`restored: ${describeCod(restored)}`);
       } catch (error) {
         log(`cleanup: FAILED to restore cancel-on-disconnect: ${describe(error)}`);
@@ -636,7 +672,7 @@ try {
     //
     // Interrupt is the path where this matters most: Ctrl-C reaches the child
     // too (`spawn` passes no `detached`, so it shares the process group), so it
-    // can land between `placeOrder` and the parent learning the order id.
+    // can land between `createOrder` and the parent learning the order id.
     console.error(
       `\n${error.message} — cleanup ran. Check the lines above: they say ` +
         "whether the book was confirmed empty.",
@@ -647,9 +683,9 @@ try {
     console.error(
       `\nCouldn't reach the Exchange API.\n  ${describe(error)}\n\n` +
         "If this host isn't serving the API for you, point the example at another\n" +
-        "deployment. That value is the deployment *base* — the client adds the\n" +
-        "/api/v1 prefix itself, and refuses a base that already carries it:\n\n" +
-        "  NEXUS_EXCHANGE_API_URL=https://<host>/<prefix> npm start",
+        "deployment. That value is the deployment *base*: the client sends the\n" +
+        "spec's bare paths (/orders) under it, and refuses one ending in /api/v1:\n\n" +
+        "  NEXUS_EXCHANGE_API_URL=https://<host>/v1 npm start",
     );
     process.exit(EXIT_ERROR);
   }

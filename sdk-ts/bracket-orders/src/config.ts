@@ -6,19 +6,20 @@
 
 import { existsSync } from "node:fs";
 
+import { Network, baseUrlForNetwork } from "@nexus-xyz/exchange-ts";
+
 import * as dec from "./decimal.js";
 import type { Dec } from "./decimal.js";
 
 /**
- * Where testnet answers.
+ * Where testnet answers: the SDK's own `Network.Testnet` base, which in
+ * `@nexus-xyz/exchange-ts` 0.6.0 is `https://api.testnet.nexus.xyz/v1`.
  *
- * Spelled out rather than taken from `Network.Testnet`, as in the other
- * `sdk-ts` examples: `@nexus-xyz/exchange-ts` 0.4.0 ships
- * `https://exchange.nexus.xyz/api/exchange` as its testnet base, and that host
- * proxies to a decommissioned service (HTTP 500 on every route). The
- * `/indexer` prefix is part of the deployment. The bare host 404s.
+ * Read from the SDK rather than spelled out, so this example follows the SDK's
+ * network map instead of drifting from it. Requests go to the spec's bare paths
+ * under it (`/orders`, `/fills`), and the bare host root 404s.
  */
-const TESTNET_BASE_URL = "https://api.testnet.nexus.xyz/indexer";
+const TESTNET_BASE_URL = baseUrlForNetwork(Network.Testnet);
 
 /** How often the watcher re-reads REST even when the socket is quiet. */
 const DEFAULT_RECONCILE_SECONDS = 15;
@@ -46,7 +47,8 @@ export interface Config {
   readonly apiSecret: string | undefined;
   readonly baseUrl: string;
   readonly baseUrlOverridden: boolean;
-  readonly wsUrl: string;
+  /** The `NEXUS_EXCHANGE_WS_URL` override, or `null` to use the client's own `wsUrl`. */
+  readonly wsUrl: string | null;
   /** What the target's balances are: declared by this app for its default, by you for an override. */
   readonly funds: "play" | "unknown";
   readonly live: boolean;
@@ -115,29 +117,10 @@ function parseBaseUrl(raw: string): string {
   if (url.search !== "" || url.hash !== "" || url.username !== "" || url.password !== "") {
     throw new ConfigError("NEXUS_EXCHANGE_API_URL must be a plain base URL: no query, fragment or userinfo");
   }
-  const path = url.pathname.replace(/\/+$/, "");
-  if (path.endsWith("/api/v1")) {
-    throw new ConfigError(
-      "NEXUS_EXCHANGE_API_URL is the deployment base and must not include /api/v1, which the client adds. " +
-        `Try ${JSON.stringify(`${url.origin}${path.slice(0, -"/api/v1".length)}`)}.`,
-    );
-  }
-  return `${url.origin}${path}`;
-}
-
-/**
- * The WebSocket base for a REST base, **keeping the path prefix**.
- *
- * SDK 0.4.0's `Client.wsUrl` is the REST origin with the scheme swapped, and
- * `customNetwork` refuses a `wsUrl` with a path. Against this deployment that
- * gives `wss://api.testnet.nexus.xyz/ws`, which 404s: the stream is under
- * `/indexer`. So it's derived here and handed straight to `createWsClient`,
- * which takes a free-form `url`. Same workaround as `sdk-ts/dead-mans-switch`.
- */
-function deriveWsUrl(baseUrl: string): string {
-  const url = new URL(baseUrl);
-  url.protocol = url.protocol === "http:" ? "ws:" : "wss:";
-  return url.toString().replace(/\/+$/, "");
+  // A base ending in the old `/api/v1` layout is refused by the SDK's
+  // `customNetwork`, whose message names the base it wanted; `Venue` reports it
+  // against this variable.
+  return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
 }
 
 function parseWsUrl(raw: string, baseUrl: string): string {
@@ -206,7 +189,7 @@ export function loadConfig(argv: readonly string[]): Config {
   const rawBase = env("NEXUS_EXCHANGE_API_URL");
   const baseUrl = rawBase === undefined ? TESTNET_BASE_URL : parseBaseUrl(rawBase);
   const rawWs = env("NEXUS_EXCHANGE_WS_URL");
-  const wsUrl = rawWs === undefined ? deriveWsUrl(baseUrl) : parseWsUrl(rawWs, baseUrl);
+  const wsUrl = rawWs === undefined ? null : parseWsUrl(rawWs, baseUrl);
   // A bare URL can't say whose money is behind it. The default is testnet and
   // this app declares it `play`. An override is `unknown` until you say
   // otherwise, and `--live` refuses `unknown`.

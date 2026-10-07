@@ -152,11 +152,15 @@ export async function runBracket(config: Config, deps: Deps): Promise<number> {
   phase("reading");
 
   const venue = new Venue(config);
+  // Unless NEXUS_EXCHANGE_WS_URL overrides it, the socket base is the SDK's: the
+  // REST base with the scheme swapped and the route prefix kept, so the stream
+  // is on the host and prefix the ws token was minted on.
+  const wsUrl = config.wsUrl ?? venue.client.wsUrl;
   const runId = config.runId ?? randomBytes(4).toString("hex");
   const f = config.bracket;
   log(
     `target  ${config.baseUrl} (${!config.baseUrlOverridden ? "testnet, play funds" : config.funds === "play" ? "overridden host, declared play funds" : "overridden host, funds not declared"}); ` +
-      `ws ${config.wsUrl}/ws`,
+      `ws ${wsUrl}/ws`,
   );
   log(`mode    ${config.live ? "LIVE: places the bracket and manages it" : "dry run: reads live data, sends no write of any kind"}`);
 
@@ -212,7 +216,7 @@ export async function runBracket(config: Config, deps: Deps): Promise<number> {
     log(`  POST /orders ${bodyLine(entry)}`);
     log(`  POST /orders ${bodyLine(exits.sl)}`);
     log(`  POST /orders ${bodyLine(exits.tp)}`);
-    log(`  then hold /ws orders+fills, and cancel the survivor with DELETE /api/v1/orders/{id}?market_id=${plan.market}`);
+    log(`  then hold /ws orders+fills, and cancel the survivor with DELETE /orders/{id}?market_id=${plan.market}`);
     for (const b of blockers.filter((b) => !problems.includes(b))) log(`live would refuse: ${b}`);
     log(problems.length > 0 ? "dry run: nothing was sent, and --live would refuse this plan." : "dry run: nothing was sent.");
     return problems.length > 0 ? EXIT_REFUSED : EXIT_OK;
@@ -265,7 +269,7 @@ export async function runBracket(config: Config, deps: Deps): Promise<number> {
   phase("managing");
   log("managing: one-cancels-other over /ws orders+fills, every decision from a REST read. Ctrl-C leaves both exits resting.");
   const watcher = new Watcher(venue, legs, {
-    wsUrl: config.wsUrl,
+    wsUrl,
     reconcileMs: config.reconcileMs,
     signal: deps.signal,
     log,
