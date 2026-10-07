@@ -9,8 +9,9 @@
 # Self-contained on purpose: no `-r`/`-c` includes, no `-e`, no alternate index.
 # The `==` pins are only a guarantee if this file is the entire set.
 
-# The Python SDK this example is about.
-nexus-exchange==0.4.0
+# The Python SDK this example is about. 0.7.0 sends REST to the `/v1` base with
+# the spec's bare paths.
+nexus-exchange==0.7.0
 
 # --- nexus-exchange's tree ---------------------------------------------------
 annotated-types==0.8.0
@@ -44,5 +45,7 @@ typing-inspection==0.4.4
 
 # --- the typechecker CI runs, and its tree -----------------------------------
 mypy==2.3.1
+ast-serialize==0.11.2
+librt==0.15.0
 mypy-extensions==1.1.0
 pathspec==1.1.1

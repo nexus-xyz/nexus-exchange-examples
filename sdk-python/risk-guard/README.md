@@ -85,18 +85,13 @@ why that is safe; here the question does not arise. The cost is one extra
 round-trip of skew between the two reads, which no limit depends on — the open
 orders feed no limit, they are only the thing being cancelled.
 
-## Two things the SDK will let you get wrong
+## A thing the SDK will let you get wrong
 
-Both were measured, not guessed, and both are pinned by tests so a version bump
-cannot quietly undo them.
-
-**`ApiError.transient` reports `429` as terminal.** It is
-`status >= 500 or status == 408`, so a rate-limited poll looks permanent — and a
-guard that stops on terminal errors would shut itself down the first time the
-venue throttled it. A rate limit is the textbook *retryable* failure. So
-`guard.is_transient` treats 429 as transient regardless of the flag, as a small
-named exception rather than a blanket "retry everything", because the whole value
-of the distinction is that a revoked credential still stops the guard.
+It was measured, not guessed, and it is pinned by a test so a version bump cannot
+quietly undo it. (SDK releases before 0.6.0 had a second one: `ApiError.transient`
+reported `429` as terminal, so a guard that stops on terminal errors would shut
+itself down the first time it was rate limited. 0.6.0 fixed the flag, and a test
+still pins that a 429 does not stop the guard.)
 
 **Passing a network *and* a base URL reports the wrong funds.**
 `Client(Network.TESTNET, base_url=...)` routes requests at your override — but
@@ -170,7 +165,7 @@ from a committed file. See [`.env.example`](./.env.example).
 | --- | --- | --- |
 | `NEXUS_EXCHANGE_API_KEY` | yes | Testnet API key |
 | `NEXUS_EXCHANGE_API_SECRET` | yes | Paired secret, 32-byte hex |
-| `NEXUS_EXCHANGE_API_URL` | no | Point at another deployment — the deployment base, not the `/api/v1` path |
+| `NEXUS_EXCHANGE_API_URL` | no | Point at another deployment: the REST base, e.g. `https://<host>/v1` |
 | `NEXUS_GUARD_MAX_NOTIONAL` | one of these | Cap on total position notional |
 | `NEXUS_GUARD_MAX_LOSS` | one of these | Cap on total unrealized loss, as a positive number |
 | `NEXUS_GUARD_MIN_AVAILABLE_MARGIN` | one of these | Floor on available margin |
@@ -191,19 +186,26 @@ The poll interval is held to the same standard and bounded at both ends.
 
 **Testnet — play funds.** `Network.TESTNET` is named explicitly in `guard.py`
 rather than left to the default, so nobody has to guess whose money this watches.
-Its base already resolves to `https://exchange.nexus.xyz/api/exchange`, the
-gateway base that serves the API, so no override is needed to reach the live
-venue. `Network.MAINNET` needs no guard of our own: the SDK refuses to resolve a
+Its base resolves to `https://api.testnet.nexus.xyz/v1` in SDK 0.7.0, the
+spec's base, with every request a bare spec path under it, so no override is
+needed to reach the live venue. `Network.MAINNET` needs no guard of our own: the SDK refuses to resolve a
 base for it, locally, before any bytes leave the process.
 
-`NEXUS_EXCHANGE_API_URL` points the client at another deployment. Pass the
-deployment base; the SDK appends `/api/v1` itself. An overridden target reports
-`funds=UNKNOWN` and the banner says so — see the second trap above for why the
+`NEXUS_EXCHANGE_API_URL` points the client at another deployment. Pass the REST
+base the spec's paths hang off (e.g. `https://<host>/v1`). An overridden target
+reports `funds=UNKNOWN` and the banner says so — see the trap above for why the
 obvious way to write this reports `play funds` instead.
 
 ## Pinned versions
 
-Pinned to **`nexus-exchange` 0.4.0** (the Python SDK), with `mypy` 2.3.1.
+Pinned to **`nexus-exchange` 0.7.0** (the Python SDK), with `mypy` 2.3.1.
+
+0.7.0 sends every request to one `/v1` base with the spec's bare paths, and
+retries nothing unless a client opts in with `retry=` (and then only GETs). This
+app does not opt in, so each request is one attempt and a failed cancel is tried
+again on the next tick, after a fresh read. Releases before 0.6.0 pointed
+`Network.TESTNET` at the decommissioned `https://exchange.nexus.xyz/api/exchange`
+gateway, so do not pin this example back.
 
 There is no lockfile format to commit here, so `requirements.txt` is one: the
 SDK's transitive tree is pinned by `==` too, at the versions this example was
@@ -230,7 +232,7 @@ different bytes than this README describes.
   way; a limit check is a comparison against a sum, which is exactly where binary
   floating point would decide the wrong way.
 - `mypy.ini` sets `follow_untyped_imports`, and the reason is worth knowing.
-  `nexus-exchange` 0.4.0 is fully annotated but ships no `py.typed` marker, so
+  `nexus-exchange` 0.7.0 is fully annotated but ships no `py.typed` marker, so
   under PEP 561 a type checker ignores all of it: without that line `mypy .`
   reports one `import-untyped` error and then types every SDK value as `Any`. A
   `strict = True` gate that passes while checking nothing at the one boundary

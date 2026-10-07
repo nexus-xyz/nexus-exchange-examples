@@ -325,18 +325,16 @@ class ErrorClassification(unittest.TestCase):
                 self.assertIsNone(guard.classify(error))
         self.assertIsNone(guard.classify(TransportError("connection reset")))
 
-    def test_rate_limiting_is_transient_despite_the_sdk_flag(self) -> None:
-        """The correction this app makes, pinned so a bump cannot undo it.
+    def test_rate_limiting_is_transient(self) -> None:
+        """Pinned so a bump cannot undo it.
 
-        `ApiError.transient` is `status >= 500 or status == 408`, so 429 reports
-        terminal. Left alone, the guard would shut itself down the first time it
-        was rate limited.
+        SDK releases before 0.6.0 reported 429 terminal, and a guard reading that
+        would shut itself down the first time it was rate limited.
         """
         from nexus_exchange import ApiError
 
         rate_limited = ApiError(429, "slow down")
-        self.assertFalse(rate_limited.transient, "SDK behaviour changed; revisit is_transient")
-        self.assertTrue(guard.is_transient(rate_limited))
+        self.assertTrue(rate_limited.transient, "SDK behaviour changed; revisit classify")
         self.assertIsNone(guard.classify(rate_limited))
 
     def test_other_terminal_errors_use_ex_dataerr(self) -> None:
@@ -466,7 +464,6 @@ class SdkBoundary(unittest.TestCase):
             base_url=self.base, api_key="k", api_secret="00" * 32
         ).network
         self.assertEqual(described.base_url, deprecated.base_url)
-        self.assertEqual(described.direct_base_url, deprecated.direct_base_url)
         self.assertIs(described.funds, deprecated.funds)
         # A faucet mints funds; nothing about a URL says this deployment has one.
         self.assertFalse(described.has_faucet)
@@ -474,7 +471,7 @@ class SdkBoundary(unittest.TestCase):
     def test_both_forms_actually_route_at_the_override(self) -> None:
         """Which is why reporting is the only difference that matters."""
         guard.build_client(self.cfg(self.base)).fetch_balance()
-        self.assertIn("/api/v1/account", _Handler.seen)
+        self.assertIn("/account", _Handler.seen)
 
     def test_default_target_is_testnet_play_funds(self) -> None:
         client = guard.build_client(self.cfg(None))
