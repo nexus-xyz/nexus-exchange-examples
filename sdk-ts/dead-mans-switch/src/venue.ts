@@ -22,7 +22,11 @@ import type { Config } from "./config.js";
  */
 export const REQUEST_TIMEOUT_MS = 5_000;
 
-/** Retries after the first attempt. The SDK's own default is 2. */
+/**
+ * Retries after the first attempt, for reads only. The SDK's own default is 2.
+ * From 0.6.0 the SDK never re-sends a `PUT` or `DELETE`, so the cleanup writes
+ * in `index.ts` re-read the account and re-send themselves.
+ */
 export const MAX_RETRIES = 1;
 
 /**
@@ -78,8 +82,9 @@ export function describe(error: unknown): string {
  * Whether an error is worth another attempt.
  *
  * The SDK classifies this for us on `NexusExchangeError.transient`, the same
- * flag its own retry layer uses. Used only by the watch loop, where a single
- * failed poll must not be read as "the order is gone".
+ * flag its own retry layer uses. Used by the watch loop, where a single failed
+ * poll must not be read as "the order is gone", and by the cleanup, which
+ * re-reads and re-sends a write that failed this way.
  */
 export function isTransient(error: unknown): boolean {
   return error instanceof NexusExchangeError && error.transient;

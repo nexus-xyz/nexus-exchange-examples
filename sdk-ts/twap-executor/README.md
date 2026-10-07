@@ -21,7 +21,7 @@ on 2026-09-22: every book empty, so every slice correctly finds nothing to trade
 against and rolls its quantity forward.
 
 ```text
-22:43:31  twap-executor on https://api.testnet.nexus.xyz/indexer (testnet, play funds)
+22:43:31  twap-executor on https://api.testnet.nexus.xyz/v1 (testnet, play funds)
 22:43:31  dry run: live data, no writes of any kind. Pass --live to trade
 22:43:31  weights from spec v0.8.1 (openapi.json sha256 0160c4a5f779…)
 22:43:31  tier    no credentials: public reads only, paced on the per-IP bucket the response headers report
@@ -197,7 +197,7 @@ its rounding mode stated.
 Worth knowing if you copy this into your own code. Each one is handled
 explicitly in `src/venue.ts` / `src/plan.ts`:
 
-- **`client_id` isn't in spec v0.8.1 or the SDK 0.4.0 types**, but the venue
+- **`client_id` isn't in spec v0.8.1 or the SDK 0.6.0 types**, but the venue
   accepts and documents it. The child is typed `OrderRequest & { client_id }`,
   and the SDK sends the body through unchanged.
 - **The venue serves `Order` in CCXT's vocabulary** (`symbol`, `clientOrderId`,
@@ -215,10 +215,13 @@ explicitly in `src/venue.ts` / `src/plan.ts`:
 
 ## Pinned versions
 
-This example pins **`@nexus-xyz/exchange-ts` `0.5.0`**, exact version, with
-`package-lock.json` committed. 0.5.0 is compiled against Exchange API spec
+This example pins **`@nexus-xyz/exchange-ts` `0.6.0`**, exact version, with
+`package-lock.json` committed. 0.6.0 is compiled against Exchange API spec
 **`v0.8.1`**, which is also the tag `src/spec-weights.json` was generated
-from. A test fails if the two ever disagree. Toolchain: `typescript` `7.0.2`,
+from. A test fails if the two ever disagree. 0.6.0 sends the spec's bare paths
+(`/orders`, `/fills`) under the `/v1` base, and `src/venue.ts` looks each call's
+weight up under that same spelling; v0.8.1 marks both it and the legacy
+`/api/v1/...` twin. Toolchain: `typescript` `7.0.2`,
 `tsx` `4.23.8`, `@types/node` `26.1.2`.
 
 ## Setup
@@ -272,20 +275,19 @@ sweeps and summarises. A second Ctrl-C exits at once.
 | --- | --- | --- |
 | `NEXUS_EXCHANGE_API_KEY` | for `--live` | API key. Without it, the dry run uses public data only |
 | `NEXUS_EXCHANGE_API_SECRET` | for `--live` | Secret paired with the key. Set both or neither |
-| `NEXUS_EXCHANGE_API_URL` | no | REST base. Defaults to `https://api.testnet.nexus.xyz/indexer`. Must not include `/api/v1` |
+| `NEXUS_EXCHANGE_API_URL` | no | REST base. Defaults to the SDK's `Network.Testnet` base, `https://api.testnet.nexus.xyz/v1`. Must not end in `/api/v1`, which the SDK refuses |
 | `NEXUS_EXCHANGE_FUNDS` | no | `play` to declare an overridden host a testnet. `--live` refuses an undeclared one |
 | `NEXUS_TWAP_UTILISATION` | no | Fraction of each rate-limit budget to spend. Default `0.5` |
 
 ## Which deployment it talks to
 
-**Testnet: play funds.** The default base is
-`https://api.testnet.nexus.xyz/indexer`, spelled out in `src/config.ts` rather
-than taken from `Network.Testnet`. As in the other `sdk-ts` examples, the SDK
-0.4.0 preset points at `https://exchange.nexus.xyz/api/exchange`, which proxies
-to a decommissioned service and answers 500. The `/indexer` prefix is part of
-the deployment, since the bare host 404s. An `NEXUS_EXCHANGE_API_URL` override
-is declared `funds: "unknown"` unless you set `NEXUS_EXCHANGE_FUNDS=play`, and
-the first line of output says which.
+**Testnet: play funds.** The default base is the SDK's `Network.Testnet` base,
+`https://api.testnet.nexus.xyz/v1`, read in `src/config.ts` with
+`baseUrlForNetwork` rather than spelled out. Requests go to the spec's bare
+paths under it. A journal records the base it ran against, so a run started
+against the old `/indexer` base will not resume under this one. An
+`NEXUS_EXCHANGE_API_URL` override is declared `funds: "unknown"` unless you set
+`NEXUS_EXCHANGE_FUNDS=play`, and the first line of output says which.
 
 ## Tests
 
@@ -305,10 +307,13 @@ the first line of output says which.
 - **What ran against live testnet, and what didn't.** The dry run was run end to
   end against `api.testnet.nexus.xyz` without credentials: the public book
   reads, header-driven pacing on the per-IP bucket, the journal, SIGINT, and a
-  dry-run `--resume`. **The `--live` trading path has not been run against
-  testnet.** The author had no testnet credentials to hand. On the same day the
-  venue's own `GET /status` reported its engine and indexer `down`, every book
-  was empty, and marks were unavailable, so there was nothing to trade against.
+  dry-run `--resume`. The transcript's first line was edited for SDK 0.6.0's
+  `/v1` base rather than re-captured; a shorter dry run against that base on
+  2026-10-07 printed that line as shown and again found no asks on the book.
+  **The `--live` trading path has not been run against testnet.** The author had
+  no testnet credentials to hand. On the day of the capture the venue's own
+  `GET /status` reported its engine and indexer `down`, every book was empty,
+  and marks were unavailable, so there was nothing to trade against.
   The live path, the kill and resume, the reconcile, the `429` handling and the
   sweep ran against the loopback venue in `src/run.test.ts`, which implements
   the venue's documented behaviour. That isn't the same as the venue. Before

@@ -54,7 +54,7 @@ export const weightsProvenance = `${FILE.specTag} (openapi.json sha256 ${FILE.sh
 
 /**
  * Weight of one call, keyed by method and the spec's path *template*
- * (`/api/v1/orders/{order_id}`, not a concrete id).
+ * (`/orders/{order_id}`, not a concrete id).
  *
  * Batch submission has a formula rather than a flat weight. This app never
  * batches (one child per slice), so a formula here is an error rather than

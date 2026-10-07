@@ -73,22 +73,22 @@ function fakeVenue() {
     if (route === "GET /markets") {
       return send(res, 200, [{ id: "BTC-USDX-PERP", tick_size: "0.5", lot_size: "0.001", min_order_size: "0.001", max_order_size: "100" }], "key");
     }
-    if (route === "GET /api/v1/markets/BTC-USDX-PERP/orderbook") {
+    if (route === "GET /markets/BTC-USDX-PERP/orderbook") {
       const asks: [number, number][] = bestLevelLots > 0 ? [[80000, bestLevelLots / 1000], [80000.5, 5]] : [[80000.5, 5]];
       return send(res, 200, { symbol: "BTC-USDX-PERP", bids: [[79999.5, 5]], asks, timestamp: Date.now(), datetime: "", nonce: 0 }, "ip");
     }
-    if (route === "GET /api/v1/account/rate-limit") {
+    if (route === "GET /account/rate-limit") {
       return send(res, 200, { tier: "pro", limit: 20, remaining: 20, reset_at_ms: 0, buckets: { key: { limit: 20, remaining: 20, reset_at_ms: 0 }, order: { limit: 20, remaining: 20, reset_at_ms: 0 }, cancel: { limit: 20, remaining: 20, reset_at_ms: 0 } } }, "key");
     }
-    if (route === "GET /api/v1/orders") return send(res, 200, orders.filter((o) => o.status === "Open"), "key");
-    if (route === "GET /api/v1/orders/history") return send(res, 200, orders.filter((o) => o.status !== "Open").reverse(), "key");
-    if (route === "GET /api/v1/fills") return send(res, 200, [...accountFills].reverse(), "key");
-    if (req.method === "DELETE" && url.pathname.startsWith("/api/v1/orders/")) {
+    if (route === "GET /orders") return send(res, 200, orders.filter((o) => o.status === "Open"), "key");
+    if (route === "GET /orders/history") return send(res, 200, orders.filter((o) => o.status !== "Open").reverse(), "key");
+    if (route === "GET /fills") return send(res, 200, [...accountFills].reverse(), "key");
+    if (req.method === "DELETE" && url.pathname.startsWith("/orders/")) {
       assert.ok(url.searchParams.get("market_id"), "cancel must carry market_id");
       cancels.push(url.pathname);
       return send(res, 404, { code: "not found" }, "cancel");
     }
-    if (route === "POST /api/v1/orders") {
+    if (route === "POST /orders") {
       const b = await body(req);
       const clientId = typeof b["client_id"] === "string" ? b["client_id"] : null;
       if (clientId !== null) postsByClientId.set(clientId, (postsByClientId.get(clientId) ?? 0) + 1);

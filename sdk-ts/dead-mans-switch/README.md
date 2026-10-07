@@ -8,13 +8,13 @@ that setting off, rests one order — and then **kills its own trading session
 with SIGKILL** and watches the exchange cancel the order on its behalf.
 
 ```text
-02:41:07  dead-mans-switch on https://api.testnet.nexus.xyz/indexer (testnet, play funds)
+02:41:07  dead-mans-switch on https://api.testnet.nexus.xyz/v1 (testnet, play funds)
 02:41:07  --live: this run arms cancel-on-disconnect and places one real order
 02:41:07  cancel-on-disconnect: enabled=false active=false grace=10s — not opted in
 02:41:08  plan: BTC-USDX-PERP Buy 0.001 @ 74878.5 PostOnly (mark 77998.325, -400bps, band 500bps)
 02:41:08  armed: cancel-on-disconnect: enabled=true active=true grace=10s — the venue will cancel for you
 02:41:08  spawning the session — it will place one order and then be killed
-02:41:09    session: ws open at wss://api.testnet.nexus.xyz/indexer/ws — this is the connection COD watches
+02:41:09    session: ws open at wss://api.testnet.nexus.xyz/v1/ws — this is the connection COD watches
 02:41:09    session: placed 0c41f6b2… status=Open
 02:41:09    session: session is idle and holding the socket. Waiting to be killed.
 02:41:09  confirmed over REST: 0c41f6b2… is resting
@@ -182,47 +182,26 @@ is read from a committed file. See [`.env.example`](./.env.example).
 | `NEXUS_EXCHANGE_API_KEY` | yes | Testnet API key |
 | `NEXUS_EXCHANGE_API_SECRET` | yes | Paired secret, 32-byte hex |
 | `NEXUS_EXCHANGE_API_URL` | no | REST deployment base (see below) |
-| `NEXUS_EXCHANGE_WS_URL` | no | WebSocket base, prefix included. Defaults to the REST base with the scheme swapped |
+| `NEXUS_EXCHANGE_WS_URL` | no | WebSocket base, prefix included. Defaults to the client's `wsUrl`: the REST base with the scheme swapped |
 | `NEXUS_DMS_MARKET` | no | Market for the one resting order. Default `BTC-USDX-PERP` |
 | `NEXUS_DMS_PRICE_OFFSET_BPS` | no | How far below the mark to rest, in bps. Default 400, checked against the live price band |
 | `NEXUS_DMS_WATCH_SLACK_SECONDS` | no | Extra wait past the venue's grace window, 5–600, default 30 |
 
 ## Which deployment it talks to
 
-**Testnet — play funds.** The default base is
-`https://api.testnet.nexus.xyz/indexer`, spelled out in `src/config.ts`.
+**Testnet: play funds.** The default base is the SDK's `Network.Testnet` base,
+`https://api.testnet.nexus.xyz/v1`, read in `src/config.ts` with
+`baseUrlForNetwork` rather than spelled out. Requests go to the spec's bare
+paths under it (`/orders`, `/account/cancel-on-disconnect`).
 
-That is a deviation from what every other example here does, and it is
-deliberate rather than sloppy. `@nexus-xyz/exchange-ts` 0.4.0 ships
-`https://exchange.nexus.xyz/api/exchange` as `Network.Testnet`, and that host
-returns **HTTP 500 on every route** — it proxies to a decommissioned service.
-Naming `Network.Testnet`, as CONTRIBUTING asks, would produce an example that
-cannot reach the venue at all.
-[`nexus-exchange-ts#78`](https://github.com/nexus-xyz/nexus-exchange-ts/pull/78)
-moves the constant to the durable host; until a release carries it, the host is
-named here instead. When it lands, this app should go back to
-`network: Network.Testnet` and delete both constants.
-
-The `/indexer` prefix is load-bearing. Measured 2026-09-09:
-
-| URL | |
-| --- | --- |
-| `https://api.testnet.nexus.xyz/indexer/markets` | 200 |
-| `https://api.testnet.nexus.xyz/markets` | **404** |
-| `wss://api.testnet.nexus.xyz/indexer/ws` | upgrades (400 without a token) |
-| `wss://api.testnet.nexus.xyz/ws` | **404** |
-| `https://exchange.nexus.xyz/api/exchange/api/v1/markets` | **500** — the base the SDK ships |
-
-**The WebSocket URL is built by this app, not by the SDK, and that is the second
-half of the same problem.** In 0.4.0 `Client.wsUrl` is the REST *origin* with
-the scheme swapped, and `customNetwork` refuses a `wsUrl` that carries a path at
-all ("wsUrl must be an origin with no path"). Against this deployment that
-yields `wss://api.testnet.nexus.xyz/ws`, which 404s. So `src/config.ts` derives
-the WS base from the REST base **keeping the prefix**, and hands it to
-`createWsClient`, which takes a free-form `url` and does not go through the
-network descriptor. Without that, the authenticated socket never opens — and
-with no socket there is no connection for cancel-on-disconnect to key off, so
-the example would have nothing to demonstrate.
+**The WebSocket URL comes from the SDK too.** The session hands
+`client.wsUrl` to `createWsClient`, and for this target that is the REST base
+with the scheme swapped and the prefix kept, `wss://api.testnet.nexus.xyz/v1`:
+the host the ws token is minted on. The prefix matters, because the bare
+origin's stream path 404s. Without the authenticated socket there is no
+connection for cancel-on-disconnect to key off, so the example would have
+nothing to demonstrate. `NEXUS_EXCHANGE_WS_URL` overrides it and is handed to
+`createWsClient` as given.
 
 `NEXUS_EXCHANGE_API_URL` goes through `customNetwork({ label, baseUrl, funds })`
 rather than the deprecated bare `baseUrl`, because a URL on its own cannot say
@@ -237,15 +216,24 @@ leave the process.
 
 ## Pinned versions
 
-Pinned to **`@nexus-xyz/exchange-ts` 0.5.0**, exact version, with
-`package-lock.json` committed. 0.5.0 is compiled against Exchange API spec
+Pinned to **`@nexus-xyz/exchange-ts` 0.6.0**, exact version, with
+`package-lock.json` committed. 0.6.0 is compiled against Exchange API spec
 **v0.8.1**, which is where `GET`/`PUT /account/cancel-on-disconnect`,
 `POST /ws/token` and the three-field `CancelOnDisconnectStatus` come from.
+
+0.6.0 also stopped retrying writes: `cancelOrder`, `cancelAllOrders` and
+`setCancelOnDisconnect` surface their first transient failure instead of
+re-sending. The cleanup in `src/index.ts` therefore owns that decision. After a
+failed cancel it re-reads the open orders and sends `cancelAllOrders` again only
+if something is still resting (twice at most), and after a failed restore it
+re-reads the setting before sending it again. Reads are still retried by the
+SDK.
 
 Do not pin this example back to 0.3.0: `getCancelOnDisconnect` /
 `setCancelOnDisconnect` are not in it.
 Nor to 0.4.0: its `cancelOrder` omits the required `market_id`, so the cleanup
-cancel fails (ENG-17118).
+cancel fails (ENG-17118). Nor to 0.5.0: its testnet base is the `/indexer`
+prefix, which is being discontinued.
 
 ## When it does not fire
 

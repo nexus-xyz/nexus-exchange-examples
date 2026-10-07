@@ -589,7 +589,7 @@ try {
     console.error(
       `\nThe Exchange API call failed: ${describe(error)}\n\n` +
         "If this host isn't serving the API for you, point the example at another deployment\n" +
-        "(the base, without /api/v1): NEXUS_EXCHANGE_API_URL=https://<host>/<prefix> npm start",
+        "(the base, not ending in /api/v1): NEXUS_EXCHANGE_API_URL=https://<host>/v1 npm start",
     );
     process.exit(EXIT_ERROR);
   }
