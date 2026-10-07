@@ -51,7 +51,7 @@ class MarketRules:
 
 @dataclass(frozen=True)
 class SummaryRow:
-    """One market's 24h figures and halt state, from `/api/v1/markets/summary`."""
+    """One market's 24h figures and halt state, from `/markets/summary`."""
 
     market: str
     status: str
@@ -69,8 +69,8 @@ class MarketSnapshot:
     """One market, reconciled across the three routes that list markets.
 
     Three, because they disagree. Measured on this deployment: `/markets` and
-    `/api/v1/tickers` both list four markets, and `/api/v1/markets/summary`
-    lists three — `NDQ-USDX-PERP` is simply absent from it. A tool that
+    `/tickers` both list four markets, and `/markets/summary` lists three:
+    `NDQ-USDX-PERP` is simply absent from it. A tool that
     enumerates markets from the summary route reports on three markets and never
     mentions that it skipped one, which is the failure mode an analytics tool
     exists to not have.
@@ -99,22 +99,22 @@ class MarketSnapshot:
             found.append(
                 Issue(
                     "missing_from_summary",
-                    "listed by /markets but absent from /api/v1/markets/summary, so "
-                    "there is no 24h volume, trade count or halt status for it — the "
-                    "row below is what the other routes could supply",
+                    "listed by /markets but absent from /markets/summary, so there "
+                    "is no 24h volume, trade count or halt status for it; the row "
+                    "below is what the other routes could supply",
                 )
             )
         if not self.in_catalog:
             found.append(
                 Issue(
                     "missing_from_catalog",
-                    "reported by /api/v1/markets/summary or /api/v1/tickers but not "
-                    "listed by /markets, so its trading rules are unknown",
+                    "reported by /markets/summary or /tickers but not listed by "
+                    "/markets, so its trading rules are unknown",
                 )
             )
         if not self.in_tickers:
             found.append(
-                Issue("missing_from_tickers", "absent from /api/v1/tickers")
+                Issue("missing_from_tickers", "absent from /tickers")
             )
         return tuple(found)
 
@@ -202,12 +202,8 @@ def parse_market_rules(row: Mapping[str, Any], market: str) -> MarketRules:
 def parse_catalog(payload: Any) -> dict[str, MarketRules]:
     """Parse the market catalog and its trading rules.
 
-    This one route is **not** under `/api/v1` on this deployment: it is
-    `{gateway}/markets`, and `{gateway}/api/v1/markets` is a 404. The Python
-    SDK says the same thing in a comment on its own `fetch_markets` — "not
-    migrated to /api/v1 (no direct-service route yet); stays on the legacy
-    gateway" — so this is a known split rather than a quirk of one host, and it
-    is the kind of thing worth encoding in a client instead of rediscovering.
+    `GET /markets`, a bare path under the `/v1` base like every other route
+    this app reads.
     """
     catalog: dict[str, MarketRules] = {}
     if not isinstance(payload, list):
@@ -223,7 +219,7 @@ def parse_catalog(payload: Any) -> dict[str, MarketRules]:
 
 
 def parse_summaries(payload: Any) -> dict[str, SummaryRow]:
-    """Parse `/api/v1/markets/summary`, skipping anything unrecognisable."""
+    """Parse `/markets/summary`, skipping anything unrecognisable."""
     rows: dict[str, SummaryRow] = {}
     if not isinstance(payload, list):
         return rows
@@ -296,7 +292,7 @@ def merge_market_sources(
 
 
 def parse_tickers(payload: Any) -> dict[str, TickerSnapshot]:
-    """Parse `/api/v1/tickers`, which is a **map keyed by symbol**, not a list.
+    """Parse `/tickers`, which is a **map keyed by symbol**, not a list.
 
     Worth stating because every other list-shaped route here is a list, and a
     `for row in payload` over this one iterates the keys and quietly finds
@@ -438,7 +434,7 @@ def _derived_findings(
         found.append(
             Issue(
                 "one_sided_book",
-                f"/api/v1/tickers reports {side} for this market, so any spread or "
+                f"/tickers reports {side} for this market, so any spread or "
                 "mid derived from it would be unusable — this report prices off "
                 "candles and the mark instead",
                 severity="info",
@@ -456,7 +452,7 @@ def _price_disagreement(
 
     Presence checks catch a market that is missing from a route; this catches one
     that is present in two routes with values that cannot both be right.
-    `NDQ-USDX-PERP` currently reports a mark price of 717.5 in `/api/v1/tickers`
+    `NDQ-USDX-PERP` currently reports a mark price of 717.5 in `/tickers`
     while its candles trade around 18,466 — a factor of 25. Any figure combining
     the two (a notional, a funding cost, a margin estimate) would be wrong by
     that factor, silently, so it is worth one comparison to say so.

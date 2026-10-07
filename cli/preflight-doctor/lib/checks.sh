@@ -212,7 +212,7 @@ check_reach() {
       [[ $body == *"fault filter abort"* ]] && hint=" (the gateway answered $(quoted "$body"), which is its no-such-route reply)"
       record reach fail \
         "HTTP 404 — nothing is mounted at $REST_PREFIX on $REST_HOST$hint" \
-        "this is a wrong path prefix, not a credential problem. On testnet the API is served under \`/indexer\`: the base is \`https://api.testnet.nexus.xyz/indexer\` and the bare host 404s. Set NEXUS_EXCHANGE_API_URL to the base with the prefix."
+        "this is a wrong path prefix, not a credential problem. On testnet the API is served under \`/v1\`: the base is \`https://api.testnet.nexus.xyz/v1\` and the bare host 404s. Set NEXUS_EXCHANGE_API_URL to the base with the prefix."
       ;;
     auth_required)
       # A 401 on a *public* path is a real surprise and worth its own verdict:
@@ -327,7 +327,7 @@ check_legacy_base() {
     else
       record legacy fail \
         "the configured base is $LEGACY_BASE_URL, which proxies to a decommissioned service" \
-        "this is the default every SDK and the CLI still ship. Point at the durable base instead: NEXUS_EXCHANGE_API_URL=https://api.testnet.nexus.xyz/indexer — and for the CLI, NEXUS_BASE_URL."
+        "this is the default older SDKs and the CLI ship. Point at the durable base instead: NEXUS_EXCHANGE_API_URL=$DURABLE_TESTNET_BASE. $CLI_BASE_NOTE"
     fi
     return
   fi
@@ -341,12 +341,12 @@ check_legacy_base() {
       ;;
     transport)
       record legacy warn "the legacy base $LEGACY_BASE_URL did not answer — $(curl_exit_meaning "$PROBE_CURL_EXIT")" \
-        "an SDK or CLI left on its shipped default will not work. Set NEXUS_EXCHANGE_API_URL (and NEXUS_BASE_URL for the CLI) to $DURABLE_TESTNET_BASE."
+        "an SDK or CLI left on its shipped default will not work. Set NEXUS_EXCHANGE_API_URL to $DURABLE_TESTNET_BASE. $CLI_BASE_NOTE"
       ;;
     *)
       record legacy warn \
         "the legacy base $LEGACY_BASE_URL answers HTTP $PROBE_STATUS — it proxies to a decommissioned service" \
-        "this is the default every published SDK and the CLI still ship, so an unconfigured client is pointed at a dead host. Set NEXUS_EXCHANGE_API_URL=$DURABLE_TESTNET_BASE, and NEXUS_BASE_URL=$DURABLE_TESTNET_BASE for the CLI."
+        "this is the default older SDKs and the CLI ship, so an unconfigured client is pointed at a dead host. Set NEXUS_EXCHANGE_API_URL=$DURABLE_TESTNET_BASE. $CLI_BASE_NOTE"
       ;;
   esac
 }

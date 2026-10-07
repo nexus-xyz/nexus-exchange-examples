@@ -80,14 +80,14 @@ async function discover(
   let summary = new Map<string, string | null>();
 
   try {
-    const answer = await client.get<unknown>({ path: "/api/v1/tickers" });
+    const answer = await client.get<unknown>({ path: "/tickers" });
     tickerIds = parseTickerIds(answer.body);
   } catch (error) {
     warnings.push(`GET /tickers failed: ${errorText(error)}`);
   }
 
   try {
-    const answer = await client.get<unknown>({ path: "/api/v1/markets/summary" });
+    const answer = await client.get<unknown>({ path: "/markets/summary" });
     summary = parseSummaryIds(answer.body);
   } catch (error) {
     warnings.push(`GET /markets/summary failed: ${errorText(error)}`);
@@ -131,7 +131,7 @@ async function readRiskParams(
 ): Promise<RiskParams | null> {
   try {
     const answer = await client.get<unknown>({
-      path: `/api/v1/markets/${marketId}/risk-params`,
+      path: `/markets/${marketId}/risk-params`,
     });
     return parseRiskParams(watch, answer.body);
   } catch (error) {
@@ -168,7 +168,7 @@ async function readSettled(
   marketId: string,
 ): Promise<SettledAnswer> {
   const answer = await client.get<unknown>({
-    path: `/api/v1/markets/${marketId}/funding`,
+    path: `/markets/${marketId}/funding`,
     query: [["limit", String(FUNDING_LIMIT)]],
   });
   if (!Array.isArray(answer.body)) {
@@ -193,7 +193,7 @@ async function readPremiumSamples(
 ): Promise<number> {
   try {
     const answer = await client.get<unknown>({
-      path: `/api/v1/markets/${marketId}/funding-samples`,
+      path: `/markets/${marketId}/funding-samples`,
       query: [["limit", String(PREMIUM_SAMPLE_LIMIT)]],
     });
     if (!Array.isArray(answer.body)) {

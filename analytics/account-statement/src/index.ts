@@ -71,7 +71,7 @@ async function main(): Promise<number> {
   // reads its ceiling instead of hardcoding one from the tier table.
   try {
     const status = await client.get<unknown>({
-      path: "/api/v1/account/rate-limit",
+      path: "/account/rate-limit",
       signed: true,
       weight: 0,
     });

@@ -24,15 +24,21 @@ import os
 import re
 from dataclasses import dataclass
 
-#: Testnet's durable REST base -- play funds.
+from nexus_exchange import Network
+
+#: Testnet's REST base -- play funds -- read from ``Network.TESTNET`` rather than
+#: spelled out here. In ``nexus-exchange`` 0.7.0 that is
+#: ``https://api.testnet.nexus.xyz/v1``, the spec's base, and every request this
+#: app makes is a bare spec path under it (``/metadata``, ``/agents``). Releases
+#: before 0.6.0 pointed it at the decommissioned
+#: ``https://exchange.nexus.xyz/api/exchange`` gateway, which is why this file
+#: used to name a base of its own.
 #:
-#: Named explicitly rather than left to the SDK's default (CONTRIBUTING § 4).
-#: ``nexus-exchange`` 0.4.0 resolves ``Network.TESTNET`` to the legacy
-#: ``https://exchange.nexus.xyz/api/exchange`` gateway, which answers 500 on
-#: every route now; the durable per-network host is what the rest of this catalog
-#: moved to (ENG-14959, and ``analytics/market-report``). The ``/indexer`` prefix
-#: is load-bearing -- the bare host 404s.
-TESTNET_BASE_URL = "https://api.testnet.nexus.xyz/indexer"
+#: Typed ``str | None`` by the SDK because mainnet's base is not published yet;
+#: testnet's always is, and the assertion says so where it is relied on.
+_TESTNET_BASE = Network.TESTNET.base_url
+assert _TESTNET_BASE is not None
+TESTNET_BASE_URL: str = _TESTNET_BASE
 
 #: The shortest delegation the spec accepts, and this app's default.
 #:

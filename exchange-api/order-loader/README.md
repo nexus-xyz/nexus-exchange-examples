@@ -20,7 +20,7 @@ and what that would cost, and stops.
 ## What it does
 
 ```
-14:22:07  Nexus Exchange order loader — https://api.testnet.nexus.xyz/indexer (play funds)
+14:22:07  Nexus Exchange order loader — https://api.testnet.nexus.xyz/v1 (play funds)
 14:22:07  order file: …/exchange-api/order-loader/orders.example.json
 14:22:07  run id: 4f1c8a2e (client_id prefix "ol-4f1c8a2e-")
 14:22:07  budget request 20/s, using 16.0/s (server)
@@ -101,7 +101,7 @@ Point it at your own file with `--file path/to/orders.json`.
 | --- | --- | --- |
 | `NEXUS_EXCHANGE_API_KEY` | for `--submit` | API key id. Without it, the dry run still works. |
 | `NEXUS_EXCHANGE_API_SECRET` | for `--submit` | API secret (hex) paired with the key. |
-| `NEXUS_EXCHANGE_API_URL` | no | REST base. Defaults to `https://api.testnet.nexus.xyz/indexer`. Must **not** include `/api/v1` — see below. |
+| `NEXUS_EXCHANGE_API_URL` | no | REST base. Defaults to `https://api.testnet.nexus.xyz/v1`. Must **not** end in `/api/v1`. See below. |
 | `NEXUS_EXCHANGE_FUNDS` | no | `play` \| `real` \| `unknown`. Only needed for a host this example does not recognise. Submission is refused unless this is `play`. |
 | `NEXUS_ORDER_FILE` | no | The order file. Defaults to `orders.example.json`. |
 | `NEXUS_BATCH_CHUNK` | no | Orders per batch call. Defaults to `39` — see "Chunk at 39". Capped at 40. |
@@ -145,10 +145,10 @@ position nobody wrote down.
 
 ## About the host
 
-**The base is `https://api.testnet.nexus.xyz/indexer`, and the `/indexer` is
-part of it.** It is a route prefix the deployment mounts the service under, not
-part of the API contract, and the bare host answers `404` on every path. Copy
-the base whole rather than trimming it to the hostname.
+**The base is `https://api.testnet.nexus.xyz/v1`, and the `/v1` is part of
+it.** It is the spec's REST base: every path this app sends is a bare spec path
+under it (`/orders/batch`, `/markets/summary`), and the bare host answers `404`
+on every path. Copy the base whole rather than trimming it to the hostname.
 
 **Not `https://exchange.nexus.xyz/api/exchange`.** That gateway is what every
 Nexus SDK shipped as its default until September 2026, and it now proxies to a
@@ -160,14 +160,12 @@ host and lets you override it with `NEXUS_EXCHANGE_API_URL` for a local stack.
 **Mainnet is not a target.** `api.nexus.xyz` is refused by name before any
 request is made. This example places orders in bulk; that is a testnet activity.
 
-**You sign the path the *indexer* sees, not the path in your URL.** The
-deployment strips its own `/indexer` prefix before the request reaches the
-service that verifies your signature, so a request sent to
-`…/indexer/api/v1/orders/batch` is verified as `/api/v1/orders/batch` — with the
-`/api/v1`, without the deployment's own prefix. Sign the URL's full path instead
-and you get a `401` that looks exactly like a bad secret. This is the same
-lesson [`trading-terminal`](../trading-terminal) carries, against a different
-prefix.
+**You sign the path the *indexer* sees, not the path in your URL.** The edge
+strips the base's `/v1` prefix before the request reaches the service that
+verifies your signature, so a request sent to `…/v1/orders/batch` is verified
+as `/orders/batch`. Sign the URL's full path instead and you get a `401` that
+looks exactly like a bad secret. This is the same lesson
+[`trading-terminal`](../trading-terminal) carries.
 
 ## The rate-limit model
 
@@ -315,7 +313,9 @@ exiting immediately while saying plainly that orders may survive.
   fetch, the base-URL guards and the signed-request path as far as the venue's
   `401` were all exercised against `api.testnet.nexus.xyz`. The batch submit,
   the preview, the reconcile and the cancel are written against spec `v0.8.1`
-  and have not been run against a live account.
+  and have not been run against a live account. The dry run was re-run against
+  the `/v1` base on 2026-10-07, without credentials; the first line of the
+  transcript above was edited to that base rather than re-captured.
 - `POST /orders/batch` is **sequential and non-atomic**: an early order
   consuming margin is why a later order in the same batch can fail, and
   per-order failures do not abort the batch. That is why chunks preserve file

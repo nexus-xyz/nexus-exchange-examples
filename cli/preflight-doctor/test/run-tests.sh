@@ -90,7 +90,7 @@ check "503 is not a prefix problem"  upstream_down "$(classify 503 0)"
 check "404 is the only prefix problem" not_routed  "$(classify 404 0)"
 
 # A 401 is not a prefix problem either, which is the other half of the rule:
-# under /indexer, auth runs ahead of routing, so a nonexistent path 401s too.
+# under /v1, auth runs ahead of routing, so a nonexistent path 401s too.
 check "401 is not a prefix problem"  auth_required "$(classify 401 0)"
 
 # ── curl exit codes ─────────────────────────────────────────────────────────
@@ -270,8 +270,8 @@ check "userinfo is stripped from a wss base" \
   "wss://127.0.0.1:9391/indexer" \
   "$(url_without_userinfo 'wss://apiuser:pw@127.0.0.1:9391/indexer')"
 check "a base without userinfo is untouched" \
-  "https://api.testnet.nexus.xyz/indexer" \
-  "$(url_without_userinfo 'https://api.testnet.nexus.xyz/indexer')"
+  "https://api.testnet.nexus.xyz/v1" \
+  "$(url_without_userinfo 'https://api.testnet.nexus.xyz/v1')"
 check "a base with no path is untouched" \
   "http://localhost:8080" \
   "$(url_without_userinfo 'http://localhost:8080')"

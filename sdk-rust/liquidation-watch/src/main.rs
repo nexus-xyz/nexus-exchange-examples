@@ -21,7 +21,7 @@
 //!
 //! # One coherent read, not two that can tear
 //!
-//! The account snapshot comes from `GET /api/v1/account/state`, which returns
+//! The account snapshot comes from `GET /account/state`, which returns
 //! the portfolio summary **and** every open position from a single server-side
 //! read. Issuing `/account/summary` and `/positions` separately would be two
 //! independent requests, and a fill landing between them yields an aggregate
@@ -32,7 +32,7 @@
 //! in this report are allowed to be subtracted from each other at all.
 //!
 //! The one deliberate exception is the **current** mark price, fetched per
-//! market from `GET /api/v1/markets/{id}/mark-price` *after* the snapshot. It is
+//! market from `GET /markets/{id}/mark-price` *after* the snapshot. It is
 //! printed for context — how far the market has moved since the snapshot was
 //! taken — and is pointedly **not** fed into the arithmetic, for the same
 //! reason: a mark from a later read paired with an equity from an earlier one
@@ -58,7 +58,7 @@
 //! So this report can say "8.4% from liquidation, you have room to trim" about
 //! an account the venue would in fact refuse the trim on. It does not try to
 //! detect that — it cannot — it prints the caveat every run, and it points at
-//! the read that *can* answer the question: `POST /api/v1/orders/preview`
+//! the read that *can* answer the question: `POST /orders/preview`
 //! returns the venue's own `accepted` / `reject_reason` for an order it does not
 //! submit. This app is read-only and deliberately does not call it. If you are
 //! about to act on a distance printed here, preview the reducing order first.
@@ -237,9 +237,7 @@ async fn read_market(client: &Client, market_id: &str, adl_limit: u32) -> Market
     .map(|mark| mark.mark_price);
     let events: Vec<AdlEvent> = soft(
         &format!("{market_id} adl-events"),
-        client
-            .fetch_market_adl_events(market_id, Some(adl_limit))
-            .await,
+        client.fetch_adl_events(market_id, Some(adl_limit)).await,
     )
     .unwrap_or_default();
     MarketReads {
@@ -329,7 +327,7 @@ fn render_caveats(base_is_default: bool) {
         "  · An admission check. The venue's isolated pre-trade check charges raw order \
          notional while its reservation charges the netted exposure, so a full isolated \
          account can be refused the very reducing order this report implies it can send. \
-         POST /api/v1/orders/preview is the read that answers that; this app never writes, \
+         POST /orders/preview is the read that answers that; this app never writes, \
          so it does not call it.",
     );
     log(
@@ -345,26 +343,24 @@ fn render_caveats(base_is_default: bool) {
 }
 
 async fn run(config: Config) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    // The base URL is named rather than left to `Network::Testnet`: in SDK
-    // 0.11.0 that default is still the decommissioned gateway. See
-    // `config::TESTNET_BASE_URL`. Funds are declared `Play` only for the base
-    // this app recognises; a reader-supplied URL cannot say what it moves, so it
-    // stays `Unknown` and the banner says so rather than claiming play funds.
-    let funds = if config.base_is_default {
-        Funds::Play
+    // The default is the SDK's own `Network::Testnet`, whose base in 0.12.0 is
+    // the spec's `/v1`. Funds are declared `Play` only there; a reader-supplied
+    // URL cannot say what it moves, so it stays `Unknown` and the banner says so
+    // rather than claiming play funds.
+    let (network, funds) = if config.base_is_default {
+        (Network::Testnet, Funds::Play)
     } else {
-        Funds::Unknown
+        // `CustomNetwork::new` validates the URL, so a typo fails here rather
+        // than at the first request.
+        let custom = CustomNetwork::new(config::NETWORK_LABEL, &config.base_url, Funds::Unknown)
+            .map_err(|err| {
+                ConfigError(format!(
+                    "NEXUS_EXCHANGE_API_URL is not usable: {}",
+                    one_line(err)
+                ))
+            })?;
+        (Network::Custom(custom), Funds::Unknown)
     };
-    // `CustomNetwork::new` validates the URL, so a typo fails here rather than
-    // at the first request.
-    let network = Network::Custom(
-        CustomNetwork::new(config::NETWORK_LABEL, &config.base_url, funds).map_err(|err| {
-            ConfigError(format!(
-                "NEXUS_EXCHANGE_API_URL is not usable: {}",
-                one_line(err)
-            ))
-        })?,
-    );
     let client = Client::new(
         SdkConfig::new(network)
             .api_key(config.api_key.clone(), config.api_secret.clone())
@@ -437,7 +433,7 @@ async fn run(config: Config) -> Result<ExitCode, Box<dyn std::error::Error>> {
             let events: Vec<AdlEvent> = soft(
                 "account adl-history",
                 client
-                    .fetch_account_adl_history(address, Some(config.adl_limit))
+                    .fetch_adl_history(address, Some(config.adl_limit))
                     .await,
             )
             .unwrap_or_default();

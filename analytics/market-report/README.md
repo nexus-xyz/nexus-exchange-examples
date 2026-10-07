@@ -20,7 +20,7 @@ it checks for, measured rather than imagined.
 $ python3 report.py
 Nexus Exchange market report — 2026-08-20 03:14:12Z
 ──────────────────────────────────────────────────────────────────────────────────────
-host          https://api.testnet.nexus.xyz/indexer  (spec v0.8.1, testnet, play funds)
+host          https://api.testnet.nexus.xyz/v1  (spec v0.8.1, testnet, play funds)
 window        24h at 5m = 289 buckets requested
 requests      13 fetched, 0 served from cache
 venue         health healthy, ingest lag 6 ms, sequence gaps 0
@@ -38,13 +38,17 @@ data quality
       and was excluded
   NDQ-USDX-PERP
     · missing_from_summary: listed by /markets but absent from
-      /api/v1/markets/summary, so there is no 24h volume, trade count or halt status
+      /markets/summary, so there is no 24h volume, trade count or halt status
     ! no_candles: the venue returned no candles at all at 5m; some markets here have a
       1m series and nothing coarser, so try --timeframe 1m
 
 wrote out/report.csv
 wrote out/report.html
 ```
+
+That run was against the old `/indexer` base. Its `host` line and the route
+names in `missing_from_summary` were edited for the `/v1` base rather than
+re-captured; a run against `/v1` on 2026-10-07 printed both as shown.
 
 Per market, over the window you ask for: open/high/low/close, return, annualised
 realized volatility, base volume, an approximate VWAP, mean funding annualised at
@@ -193,7 +197,7 @@ instead, which is why an analytics tool has to look for them on purpose.
 
 ### Three routes disagree about which markets exist
 
-`/markets` and `/api/v1/tickers` both list four markets. `/api/v1/markets/summary`
+`/markets` and `/tickers` both list four markets. `/markets/summary`
 lists three — `NDQ-USDX-PERP` is simply absent from it. Enumerate markets from
 the summary route and your report covers three markets and never mentions the
 fourth.
@@ -204,12 +208,6 @@ rather than presence catches a second live oddity: that same market reports a
 mark price of `717.5` while its candles trade around `18,466`, a factor of 25,
 so any figure mixing the two would be wrong by that much. One comparison,
 reported as `price_sources_disagree`.
-
-There is a routing wrinkle here too, and it is not a quirk of one host: **the
-market catalog is the one endpoint not under `/api/v1`.** `{gateway}/markets`
-works and `{gateway}/api/v1/markets` is a 404, which the Python SDK documents in
-a comment on its own `fetch_markets` — *"not migrated to /api/v1 (no
-direct-service route yet); stays on the legacy gateway."*
 
 ### Money is never a float, and the API is two-faced about numbers
 
@@ -271,7 +269,8 @@ available proxy and not the real thing.
   should not silently describe a different host than the one printed in its own
   header.
 - **A base URL ending in `/api/v1` is rejected at construction**, because the
-  paths already carry it and `/api/v1/api/v1/...` 404s like a missing endpoint.
+  paths are the spec's bare ones (`/markets`, `/tickers`), which belong under the
+  `/v1` base, and the old `/api/v1` layout has no catalog route for them.
 - **Response bodies are read with a byte cap**, and a body over it is refused
   rather than parsed.
 - **Only transient failures retry** — 429 and 5xx — with exponential backoff and

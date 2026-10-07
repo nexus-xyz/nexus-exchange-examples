@@ -5,25 +5,17 @@
 
 use std::env;
 
-/// Testnet's durable base. The `/indexer` prefix is load-bearing — the whole API
-/// is mounted under it and the bare host answers `404`.
-///
-/// This is spelled out rather than left to `Network::Testnet` on purpose. In SDK
-/// `0.11.0`, `Network::Testnet.base_url()` is still
-/// `https://exchange.nexus.xyz/api/exchange`, which is decommissioned and
-/// answers `500` on every route (measured 2026-09-09). Naming the base here is
-/// what makes the example run at all; see the README's "Which deployment it
-/// talks to".
-pub const TESTNET_BASE_URL: &str = "https://api.testnet.nexus.xyz/indexer";
+use nexus_exchange::Network;
 
 /// Label for the [`CustomNetwork`](nexus_exchange::CustomNetwork) this app
-/// builds.
+/// builds for a `NEXUS_EXCHANGE_API_URL` override. The default target needs
+/// none: it is the SDK's own `Network::Testnet`.
 ///
 /// Not decoration: the SDK namespaces stored credentials by this label and
 /// **refuses every built-in network's own name**, including the literal
 /// `"custom"` that its deprecated `Config::with_base_url` reserves. So the label
 /// has to be a name no built-in answers to.
-pub const NETWORK_LABEL: &str = "testnet-durable";
+pub const NETWORK_LABEL: &str = "api-url-override";
 
 /// Server maximum for both ADL history reads.
 const MAX_ADL_LIMIT: u32 = 1000;
@@ -33,7 +25,7 @@ const DEFAULT_ADL_LIMIT: u32 = 20;
 pub struct Config {
     pub api_key: String,
     pub api_secret: String,
-    /// REST base. Defaults to [`TESTNET_BASE_URL`].
+    /// REST base. Defaults to `Network::Testnet`'s, the spec's `/v1` base.
     pub base_url: String,
     /// `true` when the base is the app's own testnet default, which is the only
     /// target this app is willing to call play funds.
@@ -173,21 +165,26 @@ pub fn load(args: &[String]) -> Result<Startup, ConfigError> {
         ));
     };
 
-    let base_url = var("NEXUS_EXCHANGE_API_URL").unwrap_or_else(|| TESTNET_BASE_URL.to_string());
-    // A base ending in `/api/v1` is the mistake this deployment invites, because
-    // the `/api/v1` surface is mounted *under* the prefix rather than at the
-    // host root. Left alone it sends `/api/v1/api/v1/...` and 404s on every read.
+    // In SDK 0.12.0, `Network::Testnet`'s base is the spec's
+    // `https://api.testnet.nexus.xyz/v1`, so it is taken from there rather than
+    // spelled out here.
+    let testnet_base = Network::Testnet.base_url();
+    let base_url = var("NEXUS_EXCHANGE_API_URL").unwrap_or_else(|| testnet_base.to_string());
+    // A base ending in `/api/v1` is the old layout. The SDK appends the spec's
+    // bare paths (`/account/state`), which belong under `/v1`, and signs them
+    // without the base's path, so `/api/v1` would be sent but not signed.
     if base_url.trim_end_matches('/').ends_with("/api/v1") {
         return Err(ConfigError(format!(
-            "NEXUS_EXCHANGE_API_URL must not end in /api/v1 — the SDK appends the full \
-             path itself. Use the base, e.g. {TESTNET_BASE_URL}"
+            "NEXUS_EXCHANGE_API_URL must not end in /api/v1: the SDK appends the \
+             spec's bare paths, which belong under the /v1 base. Use the base, e.g. \
+             {testnet_base}"
         )));
     }
 
     Ok(Startup::Run(Box::new(Config {
         api_key,
         api_secret,
-        base_is_default: base_url == TESTNET_BASE_URL,
+        base_is_default: base_url == testnet_base,
         base_url,
         address: address()?,
         adl_limit: adl_limit()?,

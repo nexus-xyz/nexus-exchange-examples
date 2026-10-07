@@ -8,9 +8,9 @@
 import { existsSync } from "node:fs";
 
 export interface Config {
-  /** REST base, e.g. `https://api.testnet.nexus.xyz/indexer`. Routes are appended. */
+  /** REST base, e.g. `https://api.testnet.nexus.xyz/v1`. Routes are appended. */
   readonly baseUrl: string;
-  /** Public market-data WebSocket, e.g. `wss://…/indexer/stream`. */
+  /** Public market-data WebSocket, e.g. `wss://…/v1/stream`. */
   readonly streamUrl: string;
   readonly market: string;
   /** Milliseconds between REST cross-checks of the replica. */
@@ -20,13 +20,13 @@ export interface Config {
 }
 
 /**
- * The durable testnet deployment, including the `/indexer` route prefix it is
- * mounted under. The prefix is load-bearing: the bare host answers `404`.
+ * The testnet REST base, the spec's `/v1`, which the routes this app reads
+ * (`/markets/{id}/orderbook`) sit under. The bare host answers `404`.
  *
  * Not the SDKs' built-in `Network.TESTNET` base (`exchange.nexus.xyz/api/exchange`),
  * which proxies to a decommissioned indexer and answers `500` on every route.
  */
-const DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/indexer";
+const DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/v1";
 
 /**
  * Mainnet, refused outright. This example is read-only, so the danger is not

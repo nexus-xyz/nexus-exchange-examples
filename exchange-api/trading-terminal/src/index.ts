@@ -75,11 +75,11 @@ async function loadMarketSpec(
 ): Promise<MarketSpec> {
   const summaries = await rest.request<unknown>({
     method: "GET",
-    path: "/api/v1/markets/summary",
+    path: "/markets/summary",
     idempotent: true,
   });
   if (!Array.isArray(summaries)) {
-    throw new Error("GET /api/v1/markets/summary did not return a list");
+    throw new Error("GET /markets/summary did not return a list");
   }
   const entry = summaries.find(
     (item): item is Record<string, unknown> =>
@@ -115,7 +115,7 @@ async function fetchBookSnapshot(
 ): Promise<ReturnType<typeof parseBook>> {
   const raw = await rest.request<unknown>({
     method: "GET",
-    path: `/api/v1/markets/${encodeURIComponent(market)}/orderbook`,
+    path: `/markets/${encodeURIComponent(market)}/orderbook`,
     idempotent: true,
   });
   return parseBook(raw);

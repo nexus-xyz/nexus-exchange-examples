@@ -71,9 +71,10 @@ from domain import DomainUnavailable, metadata_url, read_chain_id
 
 #: Per-request ceiling, and the whole bound on one call.
 #:
-#: ``nexus_exchange`` 0.4.0 does not retry -- ``Client._request`` sends once and
-#: decodes -- so there is no attempt-vs-call distinction to get wrong here. Kept
-#: tighter than the SDK's 30s default because a person is watching this run.
+#: ``nexus_exchange`` 0.7.0 retries only when a ``Client`` is built with
+#: ``retry=``, and this one is not, so each call is sent once and there is no
+#: attempt-vs-call distinction to get wrong here. Kept tighter than the SDK's 30s
+#: default because a person is watching this run.
 REQUEST_TIMEOUT_SECONDS = 10.0
 
 #: Label for a ``NEXUS_EXCHANGE_API_URL`` target, matching the name
@@ -145,10 +146,11 @@ def build_client(config: Config) -> Client:
     alongside it. Both halves matter:
 
     * naming the network is what keeps ``funds=PLAY`` truthful, so the banner can
-      say whose money this is;
-    * passing the base is what makes it reachable, because ``Network.TESTNET``
-      resolves to the legacy ``exchange.nexus.xyz/api/exchange`` gateway in
-      0.4.0 and that gateway is gone. See ``config.TESTNET_BASE_URL``.
+      say whose money this is, and it is the network the registration is salted
+      with (see :func:`plan`);
+    * passing the base keeps it the one ``/metadata`` was read from. It is
+      ``Network.TESTNET``'s own base (see ``config.TESTNET_BASE_URL``), so this
+      changes nothing today; it makes the single source explicit.
 
     Naming a network *and* overriding the URL keeps that network's semantics --
     the SDK's documented behaviour, and the right one here, since the host being
@@ -247,13 +249,19 @@ class Plan:
     registration: AgentRegistration
 
 
-def plan(config: Config, now_ms: int) -> Plan:
+def plan(config: Config, network: NetworkConfig, now_ms: int) -> Plan:
     """Read the domain, load the keys, and sign the registration.
 
     The order is the lesson. The chain id is read **first**, from the host this
     run will register with, and a failure here stops the program before a key is
     even loaded -- so "could not read the domain" can never be followed by a
     signature made under a guessed one.
+
+    ``network`` is the client's, and it is the other half of the domain: since
+    0.7.0 the SDK salts ``RegisterAgent`` with the network's name, because the
+    server verifies it under ``salt = keccak256(network)`` with no unsalted
+    fallback. A ``NEXUS_EXCHANGE_API_URL`` target names no network, so the SDK
+    has no salt for it, and this refuses rather than pick one for it.
     """
     try:
         chain_id = read_chain_id(config.base_url, REQUEST_TIMEOUT_SECONDS)
@@ -266,6 +274,15 @@ def plan(config: Config, now_ms: int) -> Plan:
             f"verification or authorizes an agent on a network you did not mean "
             f"to. Nothing was signed and nothing was sent.",
         ) from exc
+
+    if network.signing_domain.salt is None:
+        raise ConfigError(
+            f"refusing to sign: the registration is salted with the target's "
+            f"network name, and {network.label!r} names none. NEXUS_EXCHANGE_API_URL "
+            f"points this app at a host it knows nothing about, so it will not pick "
+            f"testnet, mainnet or local for it. Nothing was signed and nothing was "
+            f"sent."
+        )
 
     wallet = signer_from_hex(config.wallet_private_key, "NEXUS_WALLET_PRIVATE_KEY")
     ephemeral = config.agent_private_key is None
@@ -291,6 +308,7 @@ def plan(config: Config, now_ms: int) -> Plan:
         nonce=now_ms,
         chain_id=chain_id,
         label=config.label,
+        network=network,
     )
     return Plan(
         wallet=wallet,
@@ -409,15 +427,15 @@ def prove(client: Client, ready: Plan) -> None:
     key is a working identity at this venue. What proves the *delegation* is
     ``GET /agents`` listing it against this wallet, which is the step either side
     of this one. A stronger proof -- placing an order as the agent -- needs the
-    session token to be usable on a client, and ``nexus_exchange`` 0.4.0 has no
-    way to pass one: ``Client`` takes HMAC credentials only, and ``sign_in``
-    hands the token back for a future session-authenticated client that does not
-    exist yet. Flagged rather than faked.
+    agent key to sign requests on a client. ``nexus_exchange`` 0.4.0, which this
+    was written against, had no way to do that; 0.6.0 added one
+    (``Client(agent=AgentSigner...)``), and this example has not been extended
+    to use it. Flagged rather than faked.
 
     The token is never printed. ``LoginResponse.__repr__`` redacts it too, so
     printing the whole object would have been safe -- this does not rely on that.
     """
-    session = client.sign_in(ready.agent)
+    session = client.login(ready.agent)
     recovered = session.address.lower()
     if recovered != ready.agent.address.lower():
         raise Fatal(
@@ -465,7 +483,7 @@ def run(config: Config) -> int:
         else "  will enroll an agent key, prove it, and revoke it before exiting"
     )
 
-    ready = plan(config, now_ms)
+    ready = plan(config, client.network, now_ms)
     report_plan(config, ready)
 
     if config.dry_run:

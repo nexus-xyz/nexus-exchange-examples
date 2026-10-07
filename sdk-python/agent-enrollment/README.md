@@ -13,10 +13,10 @@ so you can see the whole lifecycle, and what the agent can and cannot do, in one
 run.
 
 ```text
-agent-enrollment on https://api.testnet.nexus.xyz/indexer (play funds)
+agent-enrollment on https://api.testnet.nexus.xyz/v1 (play funds)
   will enroll an agent key, prove it, and revoke it before exiting
   EIP-712 domain: name='Nexus Exchange' version='1' chainId=11155111
-    read from https://api.testnet.nexus.xyz/indexer/metadata — not guessed, not defaulted
+    read from https://api.testnet.nexus.xyz/v1/metadata — not guessed, not defaulted
   owner wallet:   0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A
   agent key:      0x23B01Ff551B0dd1B727eec4BF028CD0684B3b2F3 (generated here)
   expires:        2026-09-19T14:46:11Z (1d) — nonce 1789742771814
@@ -59,12 +59,16 @@ surface — and one field inside them is the thing this example is really about.
 
 ### Read the signing domain. Never guess it.
 
-The EIP-712 domain is `{ name: 'Nexus Exchange', version: '1', chainId: <per-network> }`
+The EIP-712 domain is `{ name: 'Nexus Exchange', version: '1', chainId: <per-network>, salt: keccak256(<network name>) }`
 over `RegisterAgent(address agent, uint64 expiresAt, uint64 nonce)`. The `name`
 and `version` are contract-level constants, identical on every deployment — which
 is why the SDK will not let you override them. `chainId` is the one field that is
-per-network and **server-authoritative**, and it is the entire reason a
-registration signed for one network is invalid on another.
+per-network and **server-authoritative**, and it is the main reason a
+registration signed for one network is invalid on another. The `salt` binds it to
+the network's name as well: the server verifies under it with no unsalted
+fallback, and SDK 0.7.0 takes it from the network the client names (testnet
+here). An `NEXUS_EXCHANGE_API_URL` target names no network, so it has no salt,
+and the app refuses to sign for one rather than pick a name for it.
 
 So [`domain.py`](./domain.py) reads `signing_domain.chain_id` from `GET /metadata`
 **on the host this run will register with**, and refuses to sign if it cannot get
@@ -99,10 +103,10 @@ Three corollaries, each of which has its own test:
   tokens, API keys and agent keys are all minted per network.
 
 There is a smaller trap underneath that one. The chain id has to come from the
-host the registration is *sent* to, and `nexus_exchange.Client` does not expose
-the base it resolved. `client.network.base_url` is not it: construct
-`Client(Network.TESTNET, base_url=X)` and requests go to `X` while the config
-still reports testnet's own base. An app reading the chain id from that field
+host the registration is *sent* to, and `client.network.base_url` is not that
+host (`client.base_url` is, since SDK 0.5.0, and the two are easy to confuse):
+construct `Client(Network.TESTNET, base_url=X)` and requests go to `X` while the
+config still reports testnet's own base. An app reading the chain id from that field
 would sign under one host's domain and register on another's — silently, and only
 when an override was in play. So the base URL is decided once in
 [`config.py`](./config.py) and handed to both.
@@ -158,9 +162,10 @@ Being precise, because overclaiming here would be worse than skipping it: that
 proves the agent key is a working identity at this venue. What proves the
 *delegation* is `GET /agents` listing it against this wallet, which is the step
 either side of it. The stronger proof — placing an order as the agent — needs the
-session token to be usable on a client, and `nexus-exchange` 0.4.0 has no way to
-pass one: `Client` takes HMAC credentials only, and `sign_in` hands the token back
-for a future session-authenticated client that does not exist yet.
+agent key to sign requests on a client. `nexus-exchange` 0.4.0, which this was
+written against, had no way to do that; 0.6.0 added one
+(`Client(agent=AgentSigner...)`), and this example has not been extended to use
+it.
 
 ## Prerequisites
 
@@ -203,12 +208,13 @@ while the app registered a key against your account.
 python -m unittest -q
 ```
 
-40 tests, no network and no credentials. The refusal rules and the config parsers
+41 tests, no network and no credentials. The refusal rules and the config parsers
 are pure and are covered exhaustively, because the refusals *are* the example and
 a version bump must not be able to remove one quietly.
 
-The EIP-712 digest is pinned by a **known answer**: the domain separator and the
-struct hash are recomputed here from the spec text, independently of the SDK, and
+The EIP-712 digest is pinned by a **known answer**: the domain separator (salted
+with the network's name) and the struct hash are recomputed here from the spec
+text, independently of the SDK, and
 the signature is recovered back to the signing address. A test that only asserted
 "65 bytes came back" would pass against a signer using the wrong domain, which is
 the single failure this example is about. A second test verifies the same
@@ -262,16 +268,17 @@ while looking exactly like a registration that worked.
 rather than left to the default, so nobody has to guess whose money this
 delegates authority over, and the base is passed alongside it.
 
-Both halves are load-bearing. Naming the network is what keeps `funds=PLAY`
-truthful. Passing the base is what makes it *reachable*: `nexus-exchange` 0.4.0
-resolves `Network.TESTNET` to the legacy `https://exchange.nexus.xyz/api/exchange`
-gateway, and that gateway now answers 500 on every route. The durable per-network
-base — `https://api.testnet.nexus.xyz/indexer`, the `/indexer` prefix included,
-since the bare host 404s — is what the rest of this catalog moved to (ENG-14959,
-and [`analytics/market-report`](../../analytics/market-report)). Naming a network
-*and* overriding the URL keeps that network's funds semantics, which is the SDK's
-documented behaviour and the right one here: the host being supplied is testnet's
-own, not something a caller handed us.
+Naming the network is what keeps `funds=PLAY` truthful, and it names the network
+the registration is salted with. The base is `Network.TESTNET`'s own
+(`https://api.testnet.nexus.xyz/v1` in SDK 0.7.0, the spec's base, with every
+request a bare spec path under it), read in [`config.py`](./config.py) and passed
+alongside the network so the `/metadata` read and the client share one source.
+(SDK releases before 0.6.0 pointed `Network.TESTNET` at the decommissioned
+`https://exchange.nexus.xyz/api/exchange` gateway, which is why this example used
+to name a base of its own.) Naming a network *and* passing a URL keeps that
+network's funds semantics, which is the SDK's documented behaviour and the right
+one here: the host being supplied is testnet's own, not something a caller handed
+us.
 
 `NEXUS_EXCHANGE_API_URL` is the case where that stops being true, so it takes the
 other path — `NetworkConfig.custom(..., funds=Funds.UNKNOWN)`, and the first line
@@ -290,8 +297,9 @@ the real-funds branch to an argument about why it cannot be taken.
 
 ## Pinned versions
 
-Pinned to **`nexus-exchange` 0.4.0** (the Python SDK), with `httpx` 0.28.1 and
-`mypy` 2.3.1.
+Pinned to **`nexus-exchange` 0.7.0** (the Python SDK), with `httpx` 0.28.1 and
+`mypy` 2.3.1. 0.7.0 is the first release that sends REST to the `/v1` base, and
+it salts the registration with the network, as the server now requires.
 
 `httpx` is a direct dependency here, unlike in the sibling examples. The SDK ships
 no reader for `GET /metadata`, which is where the chain id lives, so this example
@@ -331,8 +339,13 @@ different bytes than this README describes.
   every route, so the four venue calls have been exercised against a local server
   that implements them, not against testnet. What *was* verified live is the
   refusal: pointed at the real host, `--dry-run` reports the 503 and exits `69`
-  without signing. Flagged rather than left implicit.
+  without signing. Flagged rather than left implicit. On 2026-10-07, against the
+  `/v1` base, `--dry-run` exits `69` the same way for a different reason:
+  `/metadata` (on `/indexer` too) no longer publishes a `signing_domain` block,
+  so there is no chain id to read and nothing is signed. The transcript at the
+  top predates that; its two base lines were edited for `/v1` rather than
+  re-captured.
 - Not implemented, and out of scope: renewing a delegation before it lapses,
-  running a bot on the resulting key (the SDK cannot carry a session token yet —
-  see "What the proof step does and does not show"), and enrolling more than one
-  key at a time.
+  running a bot on the resulting key (SDK 0.6.0 added `Client(agent=...)` for
+  that, unused here; see "What the proof step does and does not show"), and
+  enrolling more than one key at a time.

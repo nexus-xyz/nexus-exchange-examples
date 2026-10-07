@@ -13,7 +13,7 @@ where you have to drop down.
 
 ```text
 $ python3 scan.py --markets BTC-USDX-PERP,SOL-USDX-PERP
-ccxt-port on https://api.testnet.nexus.xyz/indexer (from built-in testnet default) — play funds
+ccxt-port on https://api.testnet.nexus.xyz/v1 (from built-in testnet default) — play funds
 adapter surface: 9 unified methods implemented, 7 advertised False and not defined (market data only — no balances, orders or positions)
 window: 2 market(s) at 5m, 200 candles and 200 trades each, depth within 10 bps of the mid
 
@@ -199,8 +199,10 @@ Stated because every part of them is a choice, not a fact:
 
 ## Pinned versions
 
-Pinned to **`nexus-exchange` 0.4.0** (the Python SDK), which is the release that
-introduced `nexus_exchange.ccxt_adapter`. `mypy` is pinned at `2.3.1`.
+Pinned to **`nexus-exchange` 0.7.0** (the Python SDK), the first release that
+sends REST to the `/v1` base with the spec's bare paths. `nexus_exchange.ccxt_adapter`
+arrived in 0.4.0; 0.7.0 freezes it at public market data, which is all this
+example uses. `mypy` is pinned at `2.3.1`.
 
 There is no lockfile format to commit here, so `requirements.txt` is one: the
 SDK's transitive tree is pinned by `==` too, at the versions this example was
@@ -252,7 +254,7 @@ Flags, with one environment variable.
 
 | Variable | Required | What it's for |
 | --- | --- | --- |
-| `NEXUS_EXCHANGE_API_URL` | no | Deployment base. Overrides the built-in testnet default. Pass the deployment base — the SDK appends `/api/v1` itself, so a URL ending in `/api/v1` is refused rather than turned into a 404. A blank value falls back to the default. |
+| `NEXUS_EXCHANGE_API_URL` | no | Deployment base. Overrides the built-in testnet default. Pass the deployment base: the SDK appends the spec's bare paths, so a URL ending in `/api/v1`, the old layout, is refused. A blank value falls back to the default. |
 
 | Flag | Default | What it does |
 | --- | --- | --- |
@@ -284,25 +286,19 @@ same subclass, as [`analytics/market-report`](../../analytics/market-report).
 
 ## Which deployment it talks to
 
-**Testnet — play funds.** The base is
-`https://api.testnet.nexus.xyz/indexer`, named explicitly in
-[`target.py`](./target.py) rather than left to a default, so nobody has to guess
-whose money this reads. It reads only public market data and has no write path at
-all, so there is nothing here that could move anything even if it were pointed
+**Testnet: play funds.** The default target is the SDK's own
+`Network.TESTNET`, whose base in 0.7.0 is `https://api.testnet.nexus.xyz/v1`, and
+[`target.py`](./target.py) prints it in the banner, so nobody has to guess whose
+money this reads. It reads only public market data and has no write path at all,
+so there is nothing here that could move anything even if it were pointed
 somewhere else.
 
-**It does not use `Network.TESTNET`, and that is deliberate.** The SDK's testnet
-descriptor resolves to `https://exchange.nexus.xyz/api/exchange`, a gateway that
-is **decommissioned**: measured on 2026-09-18, every route under it answers `500`
-with an HTML error page — `/markets`, `/api/v1/tickers` and `health_check` alike.
-An example built on it would not run. The rest of this catalog moved to the same
-durable base for the same reason
-([`exchange-api/trading-terminal`](../../exchange-api/trading-terminal),
-ENG-14959; [`analytics/market-report`](../../analytics/market-report)).
-
-The `/indexer` prefix is part of the base, not decoration: the whole API — the
-`/api/v1` surface and the host-root `/markets` route alike — is mounted under it,
-and `https://api.testnet.nexus.xyz/api/v1/...` is a 404.
+The `/v1` prefix is part of the base, not decoration: it is the spec's REST base,
+every call the adapter and the typed client make is a bare spec path under it
+(`/markets`, `/tickers`), and the bare host answers `404`. SDK releases before
+0.6.0 pointed `Network.TESTNET` at `https://exchange.nexus.xyz/api/exchange`, a
+decommissioned gateway that answers `500` on every route, which is why this
+example used to name a base of its own.
 
 `NEXUS_EXCHANGE_API_URL` points it at another deployment. An overridden target
 reports `funds=unknown` and the banner says so, because a bare URL declares
@@ -357,8 +353,8 @@ payload, not two moments
 
 The seam is `Client._send`, the one place both halves meet: the adapter calls
 `client._request` for every route, the typed client's readers go through
-`_request` and `_request_page`, and all three bottom out there. Only unsigned
-`GET`s are ever replayed.
+`_request` and `_request_page`, and all three bottom out there. Only unsigned,
+unauthenticated `GET`s are ever replayed.
 
 What that leaves in the parity report is the thing the report is about — how the
 two surfaces *represent* one payload. Temporal drift is not measured, because it
@@ -370,7 +366,7 @@ list per market. Each `scan` function issues `1 + 3N` of its own, and the second
 one's are all served from the snapshot — so the two paths *ask* for the same
 things and the venue is read once. Both numbers are pinned by tests.
 
-### Nine things a CCXT port hits here
+### Eight things a CCXT port hits here
 
 Every one of these is measured against the live adapter and pinned by a test, not
 inferred from the source.
@@ -406,23 +402,18 @@ precision mode; what is in this field is `0.5`. The adapter advertises no
 ordinary CCXT code — raises `TypeError` rather than rounding wrongly. Small
 mercy: it fails loudly.
 
-**6. `/markets` is the one route not under `/api/v1`.** `fetch_markets` sends
-`{base}/markets` while every other call sends `{base}/api/v1/...`. A port that
-assumes a uniform prefix 404s on the first call. The SDK documents this in a
-comment on its own `fetch_markets`.
-
-**7. `load_markets()` caches forever.** The first call fetches; every later call
+**6. `load_markets()` caches forever.** The first call fetches; every later call
 returns the same dict, and `reload=True` is the only way to refetch — measured, a
 second `load_markets()` makes no request at all. A long-running port that never
 reloads keeps trading against a market list from process start.
 
-**8. `side` is lower-cased by the adapter and not by the SDK.** `Trade.from_dict`
+**7. `side` is lower-cased by the adapter and not by the SDK.** `Trade.from_dict`
 keeps whatever string the venue sent (`side=str(d.get("side", ""))`), so a venue
 sending `"BUY"` gives the CCXT path `"buy"` and the native path `"BUY"`. A native
 port comparing against `"buy"` counts every buy as an unrecognised side — zero
 flow, no error. This is a real thing the unified layer does *for* you.
 
-**9. Everything is a `float`.** Which brings us to the actual subject.
+**8. Everything is a `float`.** Which brings us to the actual subject.
 
 ### What the unified layer costs, exactly
 
@@ -475,9 +466,10 @@ being ported, and the app says so next to every value it reports.
   healthy upstream` on `api.testnet.nexus.xyz/indexer` and `500` on the older
   gateway, so a live capture was not possible and the numbers were produced by a
   local server replaying the venue's payload shapes. Everything structural in
-  that block is real — the banner is what a default run prints, and the tables,
-  verdicts and sections are the program's actual output — but do not read the
-  prices as a market snapshot. The adapter behaviour each section demonstrates is
+  that block is real (the banner is what a default run prints, its base edited
+  for the `/v1` move and checked against a live run on 2026-10-07, and the
+  tables, verdicts and sections are the program's actual output), but do not
+  read the prices as a market snapshot. The adapter behaviour each section demonstrates is
   pinned by the test suite against the real adapter.
 - **When the private surface lands, this example grows a second half rather than
   a rewrite.** The scan is read-only by necessity today; nothing in `parity.py`,
@@ -498,7 +490,7 @@ being ported, and the app says so next to every value it reports.
   `parity.classify`. Mixing them anywhere else would make the measurement the
   thing being measured.
 - `mypy.ini` sets `follow_untyped_imports`, and it matters more here than in the
-  sibling examples: `nexus-exchange` 0.4.0 is fully annotated but ships no
+  sibling examples: `nexus-exchange` 0.7.0 is fully annotated but ships no
   `py.typed` marker, so under PEP 561 a typechecker ignores all of it. Without
   that line, `mypy .` would type every adapter return as `Any` — and this app is
   *about* those return shapes, so `strict = True` would pass while checking

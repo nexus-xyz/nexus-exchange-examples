@@ -18,7 +18,7 @@ request it makes is a `GET`.
 ## What it does
 
 ```
-05:32:13  Nexus Exchange funding carry — https://api.testnet.nexus.xyz/indexer (play funds)
+05:32:13  Nexus Exchange funding carry — https://api.testnet.nexus.xyz/v1 (play funds)
 05:32:13  no credentials required; every surface read here is public
 05:32:13  read budget not yet reported; pacing at an assumed 4/s until a response says otherwise
 05:32:13  reading market list from /tickers and /markets/summary
@@ -26,7 +26,7 @@ request it makes is a `GET`.
 05:32:14  reading BTC-USDX-PERP: funding, funding-samples, risk-params
 ...
 
-Funding carry — https://api.testnet.nexus.xyz/indexer (play funds)
+Funding carry — https://api.testnet.nexus.xyz/v1 (play funds)
 look-back: 168h, 2026-09-03 05:00:00Z → 2026-09-10 05:00:00Z
   anchored on the newest settled window in the data, not the local clock
   (which is 0.54h ahead of it); the deployment reported x-indexer-lag-ms
@@ -68,7 +68,8 @@ Market discovery disagreed
 
 That transcript is real, from a run against `api.testnet.nexus.xyz` on
 2026-09-10. Explanatory prose under each block is elided here for width — the
-tool prints it.
+tool prints it. Its two base lines were edited for the `/v1` base rather than
+re-captured; a run against `/v1` on 2026-10-07 printed both as shown.
 
 ## Prerequisites
 
@@ -113,7 +114,7 @@ Every variable is optional. See [`.env.example`](./.env.example).
 
 | Variable | What it's for |
 | --- | --- |
-| `NEXUS_EXCHANGE_API_URL` | REST base. Defaults to `https://api.testnet.nexus.xyz/indexer`. Must **not** include `/api/v1`. |
+| `NEXUS_EXCHANGE_API_URL` | REST base. Defaults to `https://api.testnet.nexus.xyz/v1`. Must **not** end in `/api/v1`. |
 | `NEXUS_EXCHANGE_FUNDS` | `play` \| `real` \| `unknown`. Reported in the header; gates nothing, because nothing here writes. |
 | `NEXUS_CARRY_WINDOW_HOURS` | Look-back in hours. Defaults to `168`. Same as `--window-hours`. |
 | `NEXUS_CARRY_MIN_SAMPLES` | Sample floor for ranking. Defaults to `30`. Same as `--min-samples`. |
@@ -408,12 +409,12 @@ it is re-taken on every run rather than being a note here that goes stale.
 
 ## About the host
 
-**The base is `https://api.testnet.nexus.xyz/indexer`, and the `/indexer` is
-part of it.** It is a route prefix the deployment mounts the service under, not
-part of the API contract, and the bare host answers `404` on every path
-(measured: `https://api.testnet.nexus.xyz/api/v1/markets/summary` → `404`; the
-same path under `/indexer` → `200`). Copy the base whole rather than trimming
-it to the hostname.
+**The base is `https://api.testnet.nexus.xyz/v1`, and the `/v1` is part of
+it.** It is the spec's REST base: every path this app sends is a bare spec path
+under it (`/tickers`, `/markets/{id}/funding`), and the bare host answers `404`
+(measured 2026-10-07: `https://api.testnet.nexus.xyz/markets/summary` → `404`;
+the same path under `/v1` → `200`). Copy the base whole rather than trimming it
+to the hostname.
 
 **Not `https://exchange.nexus.xyz/api/exchange`.** That gateway is what every
 Nexus SDK shipped as its default until September 2026, and it now proxies to a

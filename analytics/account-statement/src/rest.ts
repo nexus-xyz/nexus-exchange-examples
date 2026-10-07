@@ -116,7 +116,7 @@ export class MissingCredentialsError extends Error {
 }
 
 export interface GetOptions {
-  /** The indexer-visible path, e.g. `/api/v1/fills`. Signed and sent as one. */
+  /** The indexer-visible path, e.g. `/fills`. Signed and sent as one. */
   readonly path: string;
   readonly query?: ReadonlyArray<readonly [string, string]>;
   readonly signed?: boolean;
@@ -224,7 +224,7 @@ export class RestClient {
     // The base's own path prefix, with any trailing slash removed. A base with
     // no prefix at all — a local stack on `http://127.0.0.1:8080`, or the bare
     // testnet host — has `pathname === "/"`, and concatenating that with a
-    // path that already starts with `/` yields `//api/v1/...`, which never
+    // path that already starts with `/` yields `//fills`, which never
     // equals what the URL parser produces. The guard then fires on every
     // single request and the app cannot talk to that deployment at all.
     // Caught by running this example against a loopback venue.
@@ -463,7 +463,7 @@ export class RestClient {
     } else if (status === 404 && !contentType.includes("json")) {
       hint =
         " — the base URL may not be serving the API. The testnet base is " +
-        "https://api.testnet.nexus.xyz/indexer, prefix included; the bare " +
+        "https://api.testnet.nexus.xyz/v1, prefix included; the bare " +
         "host 404s on every path.";
     } else if (status === 503) {
       hint =

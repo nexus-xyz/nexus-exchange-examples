@@ -18,7 +18,7 @@ to forget. Every request it makes is a `GET`.
 ## What it does
 
 ```
-02:41:07  Nexus Exchange account statement — https://api.testnet.nexus.xyz/indexer (play funds)
+02:41:07  Nexus Exchange account statement — https://api.testnet.nexus.xyz/v1 (play funds)
 02:41:07  read budget 20/s, using 16.0/s (status), tier pro
 02:41:07  reading portfolio-history (window day, weight 5)
 02:41:08  reading fills (weight 5 per page)
@@ -27,7 +27,7 @@ to forget. Every request it makes is a `GET`.
 02:41:10  reading account/fees (weight 1)
 02:41:10  reading orders/history (weight 5 per page)
 
-Account statement — https://api.testnet.nexus.xyz/indexer (play funds)
+Account statement — https://api.testnet.nexus.xyz/v1 (play funds)
 period: 2026-09-09 02:45:00Z → 2026-09-10 02:40:00Z  (window "day", nominally
 24 hours, taken from the series the venue returned)
 
@@ -124,7 +124,7 @@ behind every figure.
 | --- | --- | --- |
 | `NEXUS_EXCHANGE_API_KEY` | **yes** | API key id. Every endpoint here is authenticated. |
 | `NEXUS_EXCHANGE_API_SECRET` | **yes** | API secret (hex) paired with the key. |
-| `NEXUS_EXCHANGE_API_URL` | no | REST base. Defaults to `https://api.testnet.nexus.xyz/indexer`. Must **not** include `/api/v1` — see below. |
+| `NEXUS_EXCHANGE_API_URL` | no | REST base. Defaults to `https://api.testnet.nexus.xyz/v1`. Must **not** end in `/api/v1`. See below. |
 | `NEXUS_EXCHANGE_FUNDS` | no | `play` \| `real` \| `unknown`. Reported in the header; gates nothing, because nothing here writes. |
 | `NEXUS_STATEMENT_WINDOW` | no | `day` \| `week` \| `month` \| `all`. Defaults to `day`. Same as `--window`. |
 | `NEXUS_MARKET` | no | Restrict to one market. Same as `--market`. |
@@ -304,7 +304,7 @@ call that consumes no tokens — rather than hardcoding a number from the tier
 table, which the spec says is per-deployment configuration.
 
 > Measured while writing this: **the `x-ratelimit-*` headers ride a `401` as
-> well as a `2xx`.** An unsigned `GET /api/v1/account/rate-limit` on the
+> well as a `2xx`.** An unsigned `GET /account/rate-limit` on the
 > testnet base answers `401 UNAUTHORIZED` and still carries
 > `x-ratelimit-limit: 50` / `x-ratelimit-remaining: 49`. So a caller with bad
 > credentials still learns the ceiling it is being metered at, and this app
@@ -340,10 +340,10 @@ flag is surfaced rather than dropped.
 
 ## About the host
 
-**The base is `https://api.testnet.nexus.xyz/indexer`, and the `/indexer` is
-part of it.** It is a route prefix the deployment mounts the service under, not
-part of the API contract, and the bare host answers `404` on every path. Copy
-the base whole rather than trimming it to the hostname.
+**The base is `https://api.testnet.nexus.xyz/v1`, and the `/v1` is part of
+it.** It is the spec's REST base: every path this app sends is a bare spec path
+under it (`/fills`, `/account/fees`), and the bare host answers `404` on every
+path. Copy the base whole rather than trimming it to the hostname.
 
 **Not `https://exchange.nexus.xyz/api/exchange`.** That gateway is what every
 Nexus SDK shipped as its default until September 2026, and it now proxies to a
@@ -356,13 +356,13 @@ request is made — deliberately by name rather than by reachability, since the
 host has no DNS record today and an unnamed refusal would look like a network
 fault rather than a decision.
 
-**You sign the path the *indexer* sees, not the path in your URL.** The
-deployment strips its own `/indexer` prefix before the request reaches the
-service that verifies your signature, so a request sent to
-`…/indexer/api/v1/fills` is verified as `/api/v1/fills`. Sign the URL's full
-path instead and you get a `401` that looks exactly like a bad secret. Same
-lesson [`trading-terminal`](../../exchange-api/trading-terminal) carries,
-against the same prefix.
+**You sign the path the *indexer* sees, not the path in your URL.** The edge
+strips the base's `/v1` prefix before the request reaches the service that
+verifies your signature, so a request sent to `…/v1/fills` is verified as
+`/fills`. Sign the URL's full path instead and you get a `401` that looks
+exactly like a bad secret. Same lesson
+[`trading-terminal`](../../exchange-api/trading-terminal) carries, against the
+same prefix.
 
 **A `503` is not a wrong base URL.** The host answered `503 no healthy
 upstream` for a stretch while this was being written. That proves routing works
@@ -419,7 +419,7 @@ accepts a JSON number where the spec promised a string.
   what that does and does not leave verified:
   - Against the live `api.testnet.nexus.xyz` deployment: the base-URL and
     mainnet guards, the window validation, the no-credentials refusal, budget
-    discovery via `GET /api/v1/account/rate-limit` (including the
+    discovery via `GET /account/rate-limit` (including the
     `401`-carries-headers finding above), the signed-request path as far as
     the venue's `401`, and the wire shapes quoted in "Money is the whole
     point", which came from the unauthenticated `/demo/*` mirror.

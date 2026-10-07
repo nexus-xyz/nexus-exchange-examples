@@ -31,13 +31,15 @@ unauthenticated.
 ### What it printed against testnet (2026-09-22)
 
 **Testnet had no live book when this was written.** The run below is real
-and unedited except for trimming. It shows the replica working correctly
+and unedited except for trimming, and for its `REST` and `stream` lines, which
+were edited for the `/v1` base rather than re-captured (a run against `/v1` on
+2026-10-07 printed both as shown). It shows the replica working correctly
 against a venue with nothing to replicate.
 
 ```
 22:42:57  Nexus Exchange book replica — BTC-USDX-PERP
-22:42:57  REST   https://api.testnet.nexus.xyz/indexer  (testnet, public data, no credentials)
-22:42:57  stream wss://api.testnet.nexus.xyz/indexer/stream
+22:42:57  REST   https://api.testnet.nexus.xyz/v1  (testnet, public data, no credentials)
+22:42:57  stream wss://api.testnet.nexus.xyz/v1/stream
 22:42:57  initial REST snapshot at nonce 0
 22:42:57  BTC-USDX-PERP  bid —  ask —  spread —  depth 0/0  EMPTY  seq 0 via rest
 22:42:57  stream connected (attempt 1), subscribed to book:BTC-USDX-PERP
@@ -97,7 +99,7 @@ There is no SDK to pin. What this example pins is **the API contract itself:
 spec `v0.8.1`**, from
 [`nexus-xyz/nexus-exchange-api`](https://github.com/nexus-xyz/nexus-exchange-api/releases/tag/v0.8.1),
 sent on every request as `X-Nexus-Api-Version: v0.8.1`. It targets **testnet**
-(play funds) at `https://api.testnet.nexus.xyz/indexer`, and it refuses
+(play funds) at `https://api.testnet.nexus.xyz/v1`, and it refuses
 mainnet's host outright.
 
 The toolchain is pinned exactly: `typescript` `7.0.2`, `tsx` `4.23.8`,
@@ -126,7 +128,7 @@ the environment.
 
 | Variable | Default | What it's for |
 | --- | --- | --- |
-| `NEXUS_EXCHANGE_API_URL` | `https://api.testnet.nexus.xyz/indexer` | REST base. Must **not** end in `/api/v1`. The `/indexer` prefix is required; the bare host 404s. |
+| `NEXUS_EXCHANGE_API_URL` | `https://api.testnet.nexus.xyz/v1` | REST base. Must **not** end in `/api/v1`. The `/v1` prefix is required; the bare host 404s. |
 | `NEXUS_EXCHANGE_STREAM_URL` | the REST base, `wss://`, plus `/stream` | Public market-data WebSocket. Derived from the REST base so the two cannot silently point at different deployments. |
 | `NEXUS_MARKET` | `BTC-USDX-PERP` | Market to replicate. Any id from `GET /markets/summary`. |
 | `NEXUS_CROSSCHECK_SECONDS` | `15` | Seconds between REST cross-checks. |

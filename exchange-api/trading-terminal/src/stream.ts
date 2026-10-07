@@ -231,8 +231,8 @@ export class MarketStream {
   /**
    * Mint a single-use upgrade token.
    *
-   * `/ws/token` has no `/api/v1` variant, so it is signed as the bare path —
-   * see the prefix discussion in `signing.ts`.
+   * Signed as the bare path `/ws/token`, like every route here. See the
+   * prefix discussion in `signing.ts`.
    */
   private async mintToken(): Promise<string> {
     const response = await this.rest.request<{ token?: unknown }>({

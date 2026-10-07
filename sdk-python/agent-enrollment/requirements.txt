@@ -11,10 +11,12 @@
 
 # --- direct dependencies -----------------------------------------------------
 
-# The Python SDK this example is about.
-nexus-exchange==0.4.0
+# The Python SDK this example is about. 0.7.0 is the first release that sends
+# REST to the `/v1` base with the spec's bare paths, and it salts the
+# `RegisterAgent` signing domain with the network, as the server now requires.
+nexus-exchange==0.7.0
 
-# Imported directly by `domain.py`. `nexus-exchange` 0.4.0 ships no reader for
+# Imported directly by `domain.py`. `nexus-exchange` 0.7.0 ships no reader for
 # `GET /metadata`, which is where the EIP-712 chain id lives, so this example
 # makes that one request itself — with the SDK's own transport rather than a new
 # dependency, which is why it is already in the tree below as well.

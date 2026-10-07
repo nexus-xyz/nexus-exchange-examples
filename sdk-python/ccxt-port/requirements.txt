@@ -14,8 +14,9 @@
 # The `==` pins are only a guarantee if this file is the entire set.
 
 # The Python SDK this example is about. `nexus_exchange.ccxt_adapter` is the
-# module the whole example exists to exercise; it arrived in 0.4.0.
-nexus-exchange==0.4.0
+# module the whole example exists to exercise; it arrived in 0.4.0. 0.7.0 is the
+# first release that sends REST to the `/v1` base with the spec's bare paths.
+nexus-exchange==0.7.0
 
 # --- nexus-exchange's tree ---------------------------------------------------
 annotated-types==0.8.0

@@ -6,7 +6,7 @@ maintenance margin breaks, ranked by fragility, and what the engine actually did
 the last time the insurance fund ran out in those markets.
 
 ```text
-liquidation-watch — https://api.testnet.nexus.xyz/indexer (play funds)
+liquidation-watch — https://api.testnet.nexus.xyz/v1 (play funds)
 credentials  key set (32 characters, hex), secret set (64 characters, hex)
 read-only: this app issues GETs only
 
@@ -46,7 +46,7 @@ Four decisions in here are worth copying.
 
 ### 1. One coherent read, because these numbers get subtracted from each other
 
-The snapshot comes from `GET /api/v1/account/state`, which returns the portfolio
+The snapshot comes from `GET /account/state`, which returns the portfolio
 summary **and** every open position from a single server-side read.
 
 The obvious alternative — `GET /account/summary` and `GET /positions`, fired
@@ -126,7 +126,7 @@ which is not the same as safe — and the report says so rather than printing a
 reassuring zero.
 
 Two counts appear, and they measure different things. `GET
-/api/v1/markets/{id}/status` reports a lifetime `adl_event_count` and needs no
+/markets/{id}/status` reports a lifetime `adl_event_count` and needs no
 credentials; the event list is a bounded, most-recent-first page behind HMAC. They
 disagree whenever the history is longer than the page, so both are printed rather
 than reconciled into one number that would be wrong in one of the two senses.
@@ -150,7 +150,7 @@ The consequence for this report is concrete: it can say *"8.40% from liquidation
 you have room to trim"* about an account the venue would in fact **refuse the trim
 on**. This app does not try to detect that — it cannot — so it prints the caveat
 on every run and points at the read that *can* answer it:
-`POST /api/v1/orders/preview` returns the venue's own `accepted` / `reject_reason`
+`POST /orders/preview` returns the venue's own `accepted` / `reject_reason`
 for an order it does not submit. This app is read-only and deliberately does not
 call it. **If you are about to act on a distance printed here, preview the
 reducing order first.**
@@ -170,7 +170,7 @@ There is no server-side number to compare against.
 ## Prerequisites
 
 - Rust 1.86+ (stable). Built and tested on 1.91.
-  > `nexus-exchange` 0.11.0 declares `rust-version = "1.86"`, and the committed
+  > `nexus-exchange` 0.12.0 declares `rust-version = "1.86"`, and the committed
   > `Cargo.lock` is lockfile v4, so anything older fails `cargo build --locked`
   > outright rather than degrading.
 - Testnet API credentials, created in the [Exchange app](https://exchange.nexus.xyz).
@@ -179,8 +179,9 @@ There is no server-side number to compare against.
 
 ## Pinned versions
 
-This example pins **`nexus-exchange` 0.11.0** (the Rust SDK), with `rust_decimal`
-1.42.1 and `tokio` 1.53.1. Exact `=` pins, and `Cargo.lock` is committed, so a
+This example pins **`nexus-exchange` 0.12.0** (the Rust SDK), with `rust_decimal`
+1.42.1 and `tokio` 1.53.1. 0.12.0 is the first release that sends REST to the
+`/v1` base with the spec's bare paths. Exact `=` pins, and `Cargo.lock` is committed, so a
 reader a year from now gets the behaviour this README describes rather than a
 silently-upgraded SDK.
 
@@ -222,31 +223,19 @@ SDK wraps has no "who am I" read** — nothing on `/account`, `/account/summary`
 
 ## Which deployment it talks to
 
-**Testnet — play funds.** The base URL is spelled out in `src/config.rs` as
-`https://api.testnet.nexus.xyz/indexer` rather than left to the SDK's
-`Network::Testnet`, and that is not a style choice. In SDK 0.11.0,
-`Network::Testnet.base_url()` is still `https://exchange.nexus.xyz/api/exchange`,
-which is decommissioned and answers `500` on every route. Left to the default,
-this example would not run.
+**Testnet: play funds.** The target is the SDK's own `Network::Testnet`, whose
+base in 0.12.0 is the spec's `https://api.testnet.nexus.xyz/v1`. (SDK 0.11.0 and
+older pointed it elsewhere, which is why this example used to spell a base out in
+`src/config.rs`.)
 
-Two things about the durable base, measured 2026-09-09:
-
-```text
-https://api.testnet.nexus.xyz/indexer/api/v1/markets/summary  → 200, JSON
-https://api.testnet.nexus.xyz/api/v1/markets/summary          → 404, fault filter abort
-https://exchange.nexus.xyz/api/exchange/api/v1/markets/summary → 500, HTML
-```
-
-The `/indexer` prefix is load-bearing: the whole API is mounted under it and the
-bare host 404s. The deployment strips the prefix before the request reaches the
-service that verifies signatures, and the SDK signs the path it *appends* to the
-base — `/api/v1/account/state`, not `/indexer/api/v1/account/state` — so signing
-lines up without any special handling. That is why the app passes the base to
-`CustomNetwork` and does nothing else about it.
+The `/v1` prefix is load-bearing: the bare host 404s. The edge strips the prefix
+before the request reaches the service that verifies signatures, and the SDK
+signs the bare path it *appends* to the base (`/account/state`, not
+`/v1/account/state`), so signing lines up without any special handling.
 
 One diagnostic worth knowing before you conclude your base is wrong: a `503 no
-healthy upstream` on an `/indexer` path is the **upstream** being down, and it
-still proves your routing is right. Only a `404` means a wrong prefix.
+healthy upstream` on a `/v1` path is the **upstream** being down, and it still
+proves your routing is right. Only a `404` means a wrong prefix.
 
 Passing `NEXUS_EXCHANGE_API_URL` builds a `Network::Custom` with `Funds::Unknown`,
 because a bare URL cannot declare what the target moves. The banner then prints
@@ -257,9 +246,9 @@ target this app is willing to call `Funds::Play`.
 
 - It is an example, not production-hardened code. It runs once and exits, keeps
   no state, and has no alerting beyond stdout.
-- **Read-only by construction.** Every call is a `GET`: `/api/v1/account/state`,
-  `/markets/{id}/risk-params`, `/api/v1/markets/{id}/status`,
-  `/api/v1/markets/{id}/mark-price`, `/markets/{id}/adl-events` and
+- **Read-only by construction.** Every call is a `GET`: `/account/state`,
+  `/markets/{id}/risk-params`, `/markets/{id}/status`,
+  `/markets/{id}/mark-price`, `/markets/{id}/adl-events` and
   `/account/{address}/adl-history`. Nothing is placed, cancelled or moved. That
   is also why there is no shutdown choreography: with no in-flight write, a
   Ctrl-C cannot abort anything that matters — the `tokio::select!` hazard
@@ -293,7 +282,10 @@ target this app is willing to call `Funds::Play`.
   the gate confirmed rather than the path. The decode and the arithmetic are
   covered by `cargo test` against a verbatim capture of the public demo mirror's
   own position (`/indexer/demo/positions`), which is the same `Position` shape
-  `/account/state` returns.
+  `/account/state` returns. After the move to SDK 0.12.0 and the `/v1` base, the
+  risk-params, status and mark-price reads were re-run through the SDK against
+  testnet on 2026-10-07, for BTC and ETH, and decoded; the signed reads were
+  refused locally for want of credentials.
 - **The wire agrees with the spec here, unlike elsewhere.** ENG-8439 records the
   indexer emitting `PortfolioPoint`'s money fields as JSON numbers where the spec
   declares lossless decimal strings. Every field this example consumes was
@@ -306,5 +298,4 @@ target this app is willing to call `Funds::Play`.
 - **Not implemented, and out of scope:** previewing a reducing order (a `POST`,
   and this app does not write), per-position isolated margin (the client cannot
   see the mode), multi-market correlated shocks, and streaming — testnet serves a
-  WebSocket origin, but `Network::Testnet.ws_base()` is `None` in SDK 0.11.0
-  (ENG-3398) and a one-shot report has nothing to stream anyway.
+  WebSocket origin, and a one-shot report has nothing to stream anyway.

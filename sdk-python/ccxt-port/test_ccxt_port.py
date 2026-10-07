@@ -10,7 +10,7 @@ the loopback interface**, rather than against a mock. A mock of an SDK only ever
 proves that the mock matches the test author's idea of it; a socket proves that
 the adapter composes the URL, decodes the body and flattens the fields the way
 this example claims it does. Every README claim about adapter behaviour —
-``/markets`` not being under ``/api/v1``, the ``load_markets`` cache, floats
+every route being a bare path under the base, the ``load_markets`` cache, floats
 truncating a decimal string, ``since`` filtering after the fetch, the lower-cased
 trade side, the timeframe the native client forwards and the adapter refuses —
 is pinned by a test here, so a version bump that changes one fails the gate
@@ -181,13 +181,13 @@ class _Venue:
     def route(self, path: str, query: str) -> Any:
         if path == "/markets":
             return [MARKET]
-        if path == "/api/v1/tickers":
+        if path == "/tickers":
             return {SYMBOL: TICKER}
-        if path == f"/api/v1/markets/{SYMBOL}/ticker":
+        if path == f"/markets/{SYMBOL}/ticker":
             return TICKER
-        if path == f"/api/v1/markets/{SYMBOL}/orderbook":
+        if path == f"/markets/{SYMBOL}/orderbook":
             return BOUNDARY_BOOK if self.boundary_book else BOOK
-        if path == f"/api/v1/markets/{SYMBOL}/candles":
+        if path == f"/markets/{SYMBOL}/candles":
             # The venue substitutes the 1m series for an unsupported timeframe
             # and says nothing — the behaviour `native_path.check_timeframe`
             # exists for. Modelled here so the test is about the real hazard.
@@ -201,7 +201,7 @@ class _Venue:
                 moved[3][4] = 61000.0
                 return moved
             return CANDLES
-        if path == f"/api/v1/markets/{SYMBOL}/trades":
+        if path == f"/markets/{SYMBOL}/trades":
             return TRADES
         return None
 
@@ -525,11 +525,12 @@ class TargetTests(unittest.TestCase):
         self.assertIn("play funds", resolved.banner())
 
     def test_default_is_not_the_decommissioned_gateway(self) -> None:
-        # `Network.TESTNET` resolves to https://exchange.nexus.xyz/api/exchange,
-        # which answers 500 on every route. An example that used it would not
-        # run, so this pins the choice rather than leaving it to a comment.
+        # SDK releases before 0.6.0 resolved `Network.TESTNET` to
+        # https://exchange.nexus.xyz/api/exchange, which answers 500 on every
+        # route. The default is read from the SDK now, so this pins that it is
+        # the `/v1` base rather than leaving it to a comment.
         self.assertNotIn("exchange.nexus.xyz", target.DEFAULT_BASE_URL)
-        self.assertTrue(target.DEFAULT_BASE_URL.endswith("/indexer"))
+        self.assertTrue(target.DEFAULT_BASE_URL.endswith("/v1"))
 
     def test_override_is_funds_unknown(self) -> None:
         resolved = target.resolve(None, {"NEXUS_EXCHANGE_API_URL": "https://host/base"})
@@ -582,9 +583,10 @@ class TargetTests(unittest.TestCase):
 
 
 class AdapterContractTests(VenueTestCase):
-    def test_markets_is_not_under_api_v1(self) -> None:
-        # The market catalog is the one route not migrated to /api/v1. A port
-        # that assumes a uniform prefix 404s on the first call.
+    def test_markets_is_a_bare_path(self) -> None:
+        # Since SDK 0.7.0 every route is a bare spec path under the `/v1` base,
+        # the market catalog included. Older releases sent `/markets` bare and
+        # everything else under `/api/v1`.
         self.exchange.load_markets()
         self.assertIn("/markets", self.venue.paths)
         self.assertNotIn("/api/v1/markets", self.venue.paths)

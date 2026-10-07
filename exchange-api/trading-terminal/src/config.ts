@@ -16,7 +16,7 @@ export interface Credentials {
 }
 
 export interface Config {
-  /** Gateway base URL. Paths like `/api/v1/orders` are appended to it. */
+  /** Gateway base URL. Paths like `/orders` are appended to it. */
   readonly baseUrl: string;
   /** WebSocket endpoint, or `null` when none was configured. */
   readonly wsUrl: string | null;
@@ -41,11 +41,11 @@ export interface Config {
 const KNOWN_PLAY_HOST = "api.testnet.nexus.xyz";
 
 /**
- * Default deployment base — testnet's durable host, including the `/indexer`
- * path prefix the API is mounted under. Verified live: see the README's
- * "About the host". The prefix is load-bearing; the bare host `404`s.
+ * Default deployment base: testnet's REST base, the spec's `/v1`, which every
+ * path this app sends sits under. Verified live: see the README's "About the
+ * host". The prefix is load-bearing; the bare host `404`s.
  */
-const DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/indexer";
+const DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/v1";
 
 const DEFAULT_MARKET = "BTC-USDX-PERP";
 const DEFAULT_ORDER_DISTANCE_BPS = 200;
@@ -84,9 +84,10 @@ function env(name: string): string | undefined {
  *     header you did not write.
  *   * **query or fragment** on a *base* would be silently dropped when a path
  *     is appended — the operator's intent lost with no error.
- *   * **a base already ending in `/api/v1`** doubles the prefix, because every
- *     path in this app carries it. That produces a `404` and, worse, a
- *     signature over a path the server never sees.
+ *   * **a base already ending in `/api/v1`** is the old layout. The app signs
+ *     the bare path it appends (`/orders`), so `/api/v1` would be sent but not
+ *     signed, and the server would verify `/api/v1/orders` against a
+ *     signature over `/orders`: a `401` that looks like a bad secret.
  */
 function parseBaseUrl(raw: string): string {
   let url: URL;
@@ -113,9 +114,9 @@ function parseBaseUrl(raw: string): string {
   const normalised = `${url.origin}${url.pathname}`.replace(/\/+$/, "");
   if (normalised.endsWith("/api/v1")) {
     throw new Error(
-      "NEXUS_EXCHANGE_API_URL must not end in /api/v1 — this app appends the " +
-        "full /api/v1/... path itself, so a base carrying it would send (and " +
-        "sign) /api/v1/api/v1/...",
+      "NEXUS_EXCHANGE_API_URL must not end in /api/v1: this app appends and " +
+        "signs the spec's bare paths (/orders), so /api/v1 in the base would be " +
+        "sent but not signed. Use the /v1 base, e.g. " + DEFAULT_BASE_URL,
     );
   }
   return normalised;

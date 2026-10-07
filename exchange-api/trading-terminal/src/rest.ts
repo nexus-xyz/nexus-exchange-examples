@@ -82,7 +82,7 @@ export class MissingCredentialsError extends Error {
 export interface RequestOptions {
   readonly method: "GET" | "POST" | "DELETE" | "PATCH" | "PUT";
   /**
-   * The indexer-visible path, e.g. `/api/v1/orders`. This is both appended to
+   * The indexer-visible path, e.g. `/orders`. This is both appended to
    * the base URL and signed — one value, so the two can never disagree.
    */
   readonly path: string;
@@ -266,7 +266,7 @@ export class RestClient {
     //
     // This is not hypothetical on either half. The parser normalises `.` and
     // `..` segments in a path, so an id echoed back as `..` would be signed as
-    // `/api/v1/orders/..` and sent as `/api/v1/`; and it is free to re-encode
+    // `/orders/..` and sent as `/`; and it is free to re-encode
     // characters in a query that our `encodeURIComponent` left alone. Checking
     // is two comparisons and turns both into an immediate, explicable failure.
     const parsed = new URL(url);

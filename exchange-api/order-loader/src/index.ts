@@ -70,7 +70,7 @@ async function refreshBudget(
   try {
     const status = await rest.request<unknown>({
       method: "GET",
-      path: "/api/v1/account/rate-limit",
+      path: "/account/rate-limit",
       signed: true,
       idempotent: true,
       // Zero, and that is the whole point: polling this endpoint consumes no
@@ -160,7 +160,7 @@ async function main(): Promise<void> {
   const markets = parseMarkets(
     await rest.request<unknown>({
       method: "GET",
-      path: "/api/v1/markets/summary",
+      path: "/markets/summary",
       idempotent: true,
       weight: 1,
     }),

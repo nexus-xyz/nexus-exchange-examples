@@ -157,7 +157,7 @@ export async function buildStatement(
 
   onProgress(`portfolio-history (window ${config.window}, weight ${HEAVY_READ_WEIGHT})`);
   const portfolioAnswer = await client.get<unknown>({
-    path: "/api/v1/account/portfolio-history",
+    path: "/account/portfolio-history",
     query: [
       ["window", config.window],
       ["limit", String(spec.maxPoints)],
@@ -207,7 +207,7 @@ export async function buildStatement(
   onProgress(`fills (weight ${HEAVY_READ_WEIGHT} per page)`);
   const fillsPage = await paginate<unknown>(
     client,
-    "/api/v1/fills",
+    "/fills",
     FILLS_PAGE,
     config.maxRows,
     HEAVY_READ_WEIGHT,
@@ -227,12 +227,12 @@ export async function buildStatement(
 
   onProgress("funding (weight 1)");
   const fundingAnswer = await client.get<unknown[]>({
-    path: "/api/v1/funding",
+    path: "/funding",
     query: [["limit", String(Math.min(FUNDING_LIMIT, config.maxRows))]],
     signed: true,
   });
   if (!Array.isArray(fundingAnswer.body)) {
-    throw new TypeError("GET /api/v1/funding: expected a JSON array");
+    throw new TypeError("GET /funding: expected a JSON array");
   }
   const fundingInPeriod = fundingAnswer.body
     .map((row) => parseFunding(watch, row))
@@ -247,7 +247,7 @@ export async function buildStatement(
   onProgress("positions/closed (weight 1 per page)");
   const closedPage = await paginate<unknown>(
     client,
-    "/api/v1/positions/closed",
+    "/positions/closed",
     CLOSED_PAGE,
     config.maxRows,
     1,
@@ -263,7 +263,7 @@ export async function buildStatement(
   let fees: FeeSchedule | null = null;
   try {
     const feesAnswer = await client.get<unknown>({
-      path: "/api/v1/account/fees",
+      path: "/account/fees",
       signed: true,
     });
     fees = parseFees(watch, feesAnswer.body);
@@ -420,7 +420,7 @@ async function readActivity(
 ): Promise<ActivitySummary | null> {
   const page = await paginate<unknown>(
     client,
-    "/api/v1/orders/history",
+    "/orders/history",
     ORDERS_PAGE,
     config.maxRows,
     HEAVY_READ_WEIGHT,

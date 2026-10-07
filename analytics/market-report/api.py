@@ -25,12 +25,11 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping
 
-# Testnet's durable base. The `/api/v1` surface is mounted *under* the
-# `/indexer` prefix rather than at the host root — see the README's "About the
-# host", where the 404 that teaches you this is written out. The prefix is
-# load-bearing; the bare host 404s. (The older `exchange.nexus.xyz/api/exchange`
-# base is decommissioned and answers 500 on every route.)
-DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/indexer"
+# Testnet's REST base, the spec's `/v1`. Every route this app reads is a bare
+# spec path under it (`/markets`, `/tickers`), and the bare host 404s, so the
+# prefix is part of the base. (The older `exchange.nexus.xyz/api/exchange` base
+# is decommissioned and answers 500 on every route.)
+DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/v1"
 
 # Sent on every request for traffic attribution, the same way the CLI does. Not
 # a version negotiation: see `API_VERSION`.
@@ -145,9 +144,9 @@ class Api:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         if self.base_url.endswith("/api/v1"):
-            # The paths this app asks for already carry `/api/v1`, so a base that
-            # also ends in it produces `/api/v1/api/v1/...` and a 404 that reads
-            # like the endpoint does not exist.
+            # The paths this app asks for are the spec's bare paths, which belong
+            # under `/v1`. A base ending in `/api/v1` is the old layout, and the
+            # spec has no `/api/v1/markets` for the catalog read to land on.
             raise ApiError(
                 f"base URL must not end in /api/v1 (got {self.base_url!r}); "
                 "pass the gateway base, e.g. " + DEFAULT_BASE_URL

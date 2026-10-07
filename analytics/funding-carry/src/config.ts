@@ -18,7 +18,7 @@ export type Funds = "play" | "real" | "unknown";
 export type SortKey = "ratio" | "carry" | "margin";
 
 export interface Config {
-  /** Deployment base URL. Paths like `/api/v1/tickers` are appended to it. */
+  /** Deployment base URL. Paths like `/tickers` are appended to it. */
   readonly baseUrl: string;
   readonly funds: Funds;
   /** Look-back for the statistics, in hours. See `windowHours` below. */
@@ -73,18 +73,17 @@ const DEFAULT_WINDOW_HOURS = 168;
 const DEFAULT_MIN_SAMPLES = 30;
 
 /**
- * The durable testnet deployment.
+ * The testnet REST base, the spec's `/v1`.
  *
  * **Not** `https://exchange.nexus.xyz/api/exchange`, which every Nexus SDK
  * shipped as its default until 2026-09 and which now answers `500` on every
- * route — it proxies to a decommissioned indexer (ENG-14039). The `/indexer`
- * suffix here is a route prefix the deployment mounts the service under, not
- * part of the API contract, and it is load-bearing: the bare host answers
- * `404` on every path (measured: `https://api.testnet.nexus.xyz/api/v1/markets/summary`
- * → `404`, the same path under `/indexer` → `200`). Copy the base whole rather
+ * route: it proxies to a decommissioned indexer (ENG-14039). Every path this
+ * app sends is a bare spec path under `/v1` (`/tickers`), and the bare host
+ * answers `404` (measured 2026-10-07: `https://api.testnet.nexus.xyz/markets/summary`
+ * → `404`, the same path under `/v1` → `200`). Copy the base whole rather
  * than trimming it to the hostname.
  */
-const DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/indexer";
+const DEFAULT_BASE_URL = "https://api.testnet.nexus.xyz/v1";
 
 /** The one deployment this example knows the funds posture of. */
 const KNOWN_PLAY_HOST = "api.testnet.nexus.xyz";
@@ -163,8 +162,9 @@ function isLoopback(hostname: string): boolean {
  *     `Authorization` header you did not write.
  *   * **query or fragment** on a *base* would be silently dropped when a path
  *     is appended — the operator's intent lost with no error.
- *   * **a base already ending in `/api/v1`** doubles the prefix, because every
- *     path in this app carries it. That produces a `404`.
+ *   * **a base already ending in `/api/v1`** is the old layout. Every path in
+ *     this app is a bare spec path that belongs under `/v1`, and some of them
+ *     (`/markets/{id}/risk-params`) have no `/api/v1` twin in the spec.
  *   * **the mainnet host**, because this is a testnet example.
  */
 function parseBaseUrl(raw: string): string {
@@ -198,9 +198,9 @@ function parseBaseUrl(raw: string): string {
   const normalised = `${url.origin}${url.pathname}`.replace(/\/+$/, "");
   if (normalised.endsWith("/api/v1")) {
     throw new Error(
-      "NEXUS_EXCHANGE_API_URL must not end in /api/v1 — this app appends the " +
-        "full /api/v1/... path itself, so a base carrying it would send " +
-        "/api/v1/api/v1/...",
+      "NEXUS_EXCHANGE_API_URL must not end in /api/v1: this app appends the " +
+        "spec's bare paths (/tickers), which belong under the /v1 base, e.g. " +
+        DEFAULT_BASE_URL,
     );
   }
   return normalised;

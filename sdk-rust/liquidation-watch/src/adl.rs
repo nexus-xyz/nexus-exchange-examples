@@ -17,7 +17,7 @@
 //!
 //! # Two counts, and they measure different things
 //!
-//! `GET /api/v1/markets/{id}/status` reports `adl_event_count` and needs no
+//! `GET /markets/{id}/status` reports `adl_event_count` and needs no
 //! credentials. `GET /markets/{id}/adl-events` returns the events themselves and
 //! is HMAC-gated (measured: `401 UNAUTHORIZED` unsigned). The count is the
 //! market's lifetime total; the event list is a bounded, most-recent-first page.
