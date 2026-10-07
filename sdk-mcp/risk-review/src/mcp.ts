@@ -4,8 +4,8 @@
 // ---------------------------
 // The Nexus Exchange MCP server exposes 67 tools (114 counting the deprecated
 // aliases 0.4.0 keeps for one minor), and 21 of them move money or change
-// account settings — `create_order`, `edit_order`, `deposit`, `claim_credit`,
-// `create_deposit`, `add_margin`. That is the right surface for a
+// account settings, such as `create_order`, `edit_order`, `deposit`,
+// `claim_credit`, `create_deposit` and `add_margin`. That is the right surface for a
 // general-purpose agent. It is emphatically not the surface a *risk review*
 // needs, which is three read calls.
 //

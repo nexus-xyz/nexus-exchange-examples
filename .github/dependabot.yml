@@ -23,8 +23,8 @@ updates:
   # it touches; CI builds every example, so a breaking SDK release shows up red
   # on that PR.
   #
-  # When an example lands, add its directory to the block for its manifest —
-  # `<track>/<example-name>/`, per CONTRIBUTING.md. An example left out of these
+  # When an example lands, add its directory to the block for its manifest
+  # (`<track>/<example-name>/`, per CONTRIBUTING.md). An example left out of these
   # lists is never bumped, and nothing else will tell you.
   #
   # `cli/*` examples pin the `nexus` CLI as a constant in their shell scripts,

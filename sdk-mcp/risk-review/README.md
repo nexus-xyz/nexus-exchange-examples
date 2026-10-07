@@ -196,12 +196,13 @@ offer the `fetch_*` names. See
 - It is an example, not production-hardened code. It reviews one account, keeps
   no state between runs, and has no alerting beyond stdout and the exit code.
 - **Not verified: a signed call with real credentials.** The routing is
-  confirmed — unauthenticated, `https://api.testnet.nexus.xyz/v1/account`
-  answers `401` `application/json` (re-checked for 0.4.0), where 0.2.0 got a
-  `404` HTML page from the marketing app — but confirming that a *valid* HMAC is accepted needs testnet keys, which this
-  example was written without. It is worth stating rather than implying, because
-  an invalid signature is answered by an edge proxy with an HTML `403`, and at
-  that layer a rejected signature and a routing fault look identical. The
+  confirmed (unauthenticated, `https://api.testnet.nexus.xyz/v1/account`
+  answers `401` `application/json`, re-checked for 0.4.0, where 0.2.0 got a
+  `404` HTML page from the marketing app), but confirming that a *valid* HMAC is
+  accepted needs testnet keys, which this example was written without. It is
+  worth stating rather than implying, because an invalid signature is answered
+  by an edge proxy with an HTML `403`, and at that layer a rejected signature
+  and a routing fault look identical. The
   upstream fix shipped with the same caveat.
 - Money is never a float. Values arrive as decimal strings and are parsed by
   `src/decimal.ts` onto `BigInt`; a limit check is a comparison against a sum,
