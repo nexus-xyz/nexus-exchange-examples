@@ -8,12 +8,12 @@ description = "Place/cancel latency percentiles for one Nexus Exchange account, 
 [dependencies]
 # Pinned exactly, not by range: a reader running this a year from now should get
 # the behaviour the README describes. See CONTRIBUTING § 3.
-nexus-exchange = "=0.11.0"
+nexus-exchange = "=0.11.1"
 # Every other pin below is held at the version the SDK's own tree resolves to, so
 # this app adds no second copy of anything. `rust_decimal` in particular must be
 # the same type the SDK deserializes money into.
-rust_decimal = "=1.42.1"
-tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+rust_decimal = "=1.43.0"
+tokio = { version = "=1.53.2", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
 # `MessageStream` is a `futures_core::Stream`; `StreamExt::next` reads it.
 futures-util = { version = "=0.3.34", default-features = false, features = ["std"] }
 # WebSocket payloads arrive as raw JSON, and the one field this app needs from
