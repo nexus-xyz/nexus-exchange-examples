@@ -10,4 +10,4 @@
 #
 # So the only pin here is the typechecker CI runs. Pinned exactly, like every
 # other version in this repo.
-mypy==2.3.1
+mypy==2.4.0
