@@ -331,9 +331,11 @@ different bytes than this README describes.
   register that agent key against that wallet until the nonce is spent. The rest
   of the body is printed, since seeing what you are about to send is the point of
   a dry run.
-- The nonce is the signing time in Unix ms. The server refuses one older than 5
-  minutes or more than 60 s ahead of its clock, so a constant or a counter would
-  not do. It needs no state kept between runs.
+- The nonce is the signing time in Unix ms. The server refuses one that is not
+  above the last nonce served for this agent key, so a constant would not do;
+  once freshness is enforced (ENG-21517), it also refuses one older than 5
+  minutes or more than 60 s ahead of its clock, so neither would a counter. It
+  needs no state kept between runs.
 - **Not verified: a live run against the real venue.** At the time of writing
   `https://api.testnet.nexus.xyz/indexer` answers `503 no healthy upstream` on
   every route, so the four venue calls have been exercised against a local server

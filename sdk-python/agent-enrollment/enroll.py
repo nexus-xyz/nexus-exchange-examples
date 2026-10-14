@@ -302,9 +302,11 @@ def plan(config: Config, network: NetworkConfig, now_ms: int) -> Plan:
     registration = wallet.register_agent(
         agent=agent.address,
         expires_at_ms=now_ms + config.ttl_days * MILLISECONDS_PER_DAY,
-        # The nonce is the signing time in Unix ms. The server refuses one
-        # older than 5 minutes or more than 60 s ahead of its clock, so a
-        # constant or a counter would not do. It needs no state between runs.
+        # The nonce is the signing time in Unix ms. The server refuses one not
+        # above the last served for this agent key, and once freshness is
+        # enforced (ENG-21517), one older than 5 minutes or more than 60 s
+        # ahead of its clock, so neither a constant nor a counter will do. It
+        # needs no state between runs.
         nonce=now_ms,
         chain_id=chain_id,
         label=config.label,
