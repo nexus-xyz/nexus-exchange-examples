@@ -1,5 +1,9 @@
 # Nexus Exchange Examples
 
+> [!WARNING]
+> **This repository is archived and no longer maintained.** The Nexus Exchange API it was built for is being
+> shut down, and no further releases will be published.
+
 Small, complete, runnable apps built on the [Nexus Exchange](https://exchange.nexus.xyz)
 API, SDKs, and CLI — in the spirit of [vercel/examples](https://github.com/vercel/examples).
 Every directory is one self-contained app: clone it, point it at testnet with
