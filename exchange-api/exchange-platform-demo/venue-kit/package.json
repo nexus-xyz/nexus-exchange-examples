@@ -1,0 +1,23 @@
+{
+  "name": "@nexus-eaas/venue-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Exchange-as-a-Service venue kit — tenant config, the capped builder fee, and the builder-code attribution layer emulated on top of the published Nexus Exchange API.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "//exports": "Source-only package: consumers bundle the TypeScript directly (Next transpilePackages, or Node's type stripping). There is no build step and no dist.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.12",
+    "typescript": "5.7.3"
+  }
+}
